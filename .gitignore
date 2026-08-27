@@ -1,0 +1,11 @@
+/target/
+/app_flutter/.dart_tool/
+/app_flutter/build/
+/app_flutter/android/build/
+/app_flutter/.flutter-plugins
+/app_flutter/.flutter-plugins-dependencies
+/.e2e-data/
+/.idea/
+/.vscode/
+*.log
+*.partial

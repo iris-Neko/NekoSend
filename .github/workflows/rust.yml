@@ -1,0 +1,27 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy,rustfmt
+      - name: Verify documentation
+        shell: pwsh
+        run: ./scripts/verify_docs.ps1
+      - name: Verify Windows installer
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./scripts/verify_windows_installer.ps1
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace

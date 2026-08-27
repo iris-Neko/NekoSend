@@ -1,0 +1,14 @@
+[package]
+name = "integration_harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+lan_chat_core = { path = "../core_rust" }
+
+[dev-dependencies]
+perf_harness = { path = "../perf_harness" }
+serde_json.workspace = true
+tempfile.workspace = true
