@@ -20,7 +20,6 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
   private let networkMonitor = NWPathMonitor()
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    super.applicationDidFinishLaunching(notification)
     guard let window = mainFlutterWindow,
           let controller = window.contentViewController as? FlutterViewController else { return }
     window.delegate = self
@@ -117,7 +116,8 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
       if args["kind"] as? String == "image" { panel.allowedContentTypes = [.image] }
       panel.begin { response in
         guard response == .OK, let path = panel.url?.path else { result(nil); return }
-        result(call.method == "pickReceiveDirectory" ? ["treeUri": path] : path)
+        if call.method == "pickReceiveDirectory" { result(["treeUri": path]) }
+        else { result(path) }
       }
     case "openReference":
       guard let reference = args["reference"] as? String else { throw CocoaError(.fileReadInvalidFileName) }

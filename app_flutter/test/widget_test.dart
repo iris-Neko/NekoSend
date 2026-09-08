@@ -899,6 +899,40 @@ void main() {
     );
   }
 
+  testWidgets('macOS desktop sends with Enter and preserves IME composition', (
+    tester,
+  ) async {
+    final controller = await _pumpComposerFixture(
+      tester,
+      platform: TargetPlatform.macOS,
+    );
+    final count = controller.selectedMessages.length;
+    final input = find.byKey(const ValueKey('message-input'));
+    await tester.showKeyboard(input);
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: 'Mac message',
+        selection: TextSelection.collapsed(offset: 11),
+        composing: TextRange(start: 0, end: 11),
+      ),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(controller.selectedMessages, hasLength(count));
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: 'Mac message',
+        selection: TextSelection.collapsed(offset: 11),
+      ),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(controller.selectedMessages.last.content, 'Mac message');
+    expect(controller.selectedMessages, hasLength(count + 1));
+    expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
   testWidgets('Windows Shift+Enter inserts a newline without sending', (
     tester,
   ) async {

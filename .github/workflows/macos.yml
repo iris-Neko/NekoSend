@@ -39,8 +39,16 @@ jobs:
         run: flutter build macos --release
       - name: Package and verify
         run: bash packaging/macos/package.sh
+      - name: Launch smoke test
+        run: bash packaging/macos/smoke-test.sh
       - uses: actions/upload-artifact@v4
         with:
           name: NekoSend-macos-universal-unsigned
           path: dist/macos/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-smoke-evidence
+          path: dist/macos-evidence/
+          if-no-files-found: ignore

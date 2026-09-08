@@ -83,7 +83,7 @@ mod tests {
             .unwrap();
         let mut member_b_storage = Storage::open(&member_b_path).unwrap();
         let member_b = member_b_storage
-            .load_or_create_profile("Member B", Platform::Windows)
+            .load_or_create_profile("Member B", Platform::Macos)
             .unwrap();
         let mut member_c_storage = Storage::open(&member_c_path).unwrap();
         let member_c = member_c_storage
