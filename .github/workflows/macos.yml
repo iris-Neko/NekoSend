@@ -36,9 +36,22 @@ jobs:
           flutter pub get --enforce-lockfile
           flutter analyze
           flutter test
+      - name: Restore compiled app
+        id: macos-build
+        uses: actions/cache/restore@v4
+        with:
+          path: app_flutter/build/macos/Build/Products/Release
+          key: macos-universal-v1-${{ hashFiles('Cargo.*', 'rust-toolchain.toml', 'core_rust/**', 'app_flutter/pubspec.*', 'app_flutter/hook/**', 'app_flutter/lib/**', 'app_flutter/macos/**') }}
       - name: Build macOS
+        if: steps.macos-build.outputs.cache-hit != 'true'
         working-directory: app_flutter
         run: flutter build macos --release
+      - name: Cache compiled app
+        if: steps.macos-build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: app_flutter/build/macos/Build/Products/Release
+          key: ${{ steps.macos-build.outputs.cache-primary-key }}
       - name: Package and verify
         run: bash packaging/macos/package.sh
       - name: Launch smoke test

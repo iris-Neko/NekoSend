@@ -6,10 +6,10 @@ out="$PWD/dist/macos"
 mkdir -p "$out"
 test -d "$app"
 # Preserve both desktop architectures, including the Rust native asset.
-lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/NekoSend"
+lipo "$app/Contents/MacOS/NekoSend" -verify_arch arm64 x86_64
 rust_found=0
 while IFS= read -r -d '' library; do
-  lipo -verify_arch arm64 x86_64 "$library"
+  lipo "$library" -verify_arch arm64 x86_64
   rust_found=1
 done < <(find "$app" -type f -name '*lan_chat_core*' -print0)
 test "$rust_found" = 1
