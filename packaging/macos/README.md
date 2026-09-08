@@ -1,6 +1,6 @@
 # NekoSend for macOS
 
-Community test build for macOS 12 or newer, Apple Silicon and Intel.
+Community test build for macOS 13 or newer, Apple Silicon and Intel.
 This build uses local ad-hoc signing. It is NOT Developer ID signed or
 Apple notarized. No Apple Developer membership is required to build it.
 

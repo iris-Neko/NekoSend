@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    show ExternalLibrary;
 import 'package:lan_chat/src/rust/api/core.dart';
 import 'package:lan_chat/src/rust/api/health.dart';
 import 'package:lan_chat/src/rust/events.dart';
@@ -10,13 +12,26 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDirectory;
+  var initialized = false;
   setUpAll(() async {
-    await RustLib.init();
     tempDirectory = await Directory.systemTemp.createTemp('lan_chat_test_');
+    // Flutter tests install a loose dylib; release apps embed a framework.
+    await RustLib.init(
+      externalLibrary: Platform.isMacOS
+          ? ExternalLibrary.open(
+              File('build/native_assets/macos/liblan_chat_core.dylib')
+                  .absolute
+                  .path,
+            )
+          : null,
+    );
+    initialized = true;
   });
   tearDownAll(() async {
-    shutdownCore();
-    RustLib.dispose();
+    if (initialized) {
+      shutdownCore();
+      RustLib.dispose();
+    }
     await tempDirectory.delete(recursive: true);
   });
 
