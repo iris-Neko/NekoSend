@@ -4,6 +4,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lan_chat/platform/platform_bootstrap.dart';
 
 void main() {
+  testWidgets('macOS bootstrap uses Application Support and its own platform', (
+    tester,
+  ) async {
+    const channel = MethodChannel('dev.lanchat/platform');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      expect(call.method, 'getBootstrapInfo');
+      return {
+        'dataDirectory': '/Users/test/Library/Application Support/NekoSend',
+        'deviceName': 'Test Mac',
+      };
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    final bootstrap = await PlatformBootstrap.load();
+    expect(bootstrap.platform, 'macos');
+    expect(bootstrap.deviceName, 'Test Mac');
+    expect(
+      bootstrap.dataDirectory,
+      endsWith('/Library/Application Support/NekoSend'),
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
   testWidgets(
     'Linux bootstrap uses the native XDG directory and a distinct platform',
     (tester) async {

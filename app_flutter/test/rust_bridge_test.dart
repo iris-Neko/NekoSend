@@ -58,6 +58,32 @@ void main() {
     expect(File(databasePath).existsSync(), isTrue);
   });
 
+  test('Flutter persists avatars and rejects unsupported IDs', () {
+    final local = listDeviceIdentities().singleWhere((item) => item.isLocal);
+    expect(local.deviceName, '更新后的名称');
+    expect(
+      setDeviceAvatar(
+        clientOperationId: generateClientOperationId(),
+        avatarId: 'rocket',
+      ),
+      'rocket',
+    );
+    final updated = listDeviceIdentities().singleWhere((item) => item.isLocal);
+    expect(updated.avatarId, 'rocket');
+    expect(updated.deviceId, local.deviceId);
+    expect(
+      () => setDeviceAvatar(
+        clientOperationId: generateClientOperationId(),
+        avatarId: 'unknown',
+      ),
+      throwsA(anything),
+    );
+    expect(
+      listDeviceIdentities().singleWhere((item) => item.isLocal).avatarId,
+      'rocket',
+    );
+  });
+
   test('Flutter reads and updates persisted application settings', () {
     final initial = getAppSettings();
     expect(initial.defaultReceivePolicy, 'auto_accept');

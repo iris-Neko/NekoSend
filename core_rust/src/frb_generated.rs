@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1672689557;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 903331418;
 
 // Section: executor
 
@@ -628,6 +628,35 @@ fn wire__crate__api__core__list_conversations_impl(
             deserializer.end();
             transform_result_sse::<_, String>((move || {
                 let output_ok = crate::api::core::list_conversations()?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__core__list_device_identities_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_device_identities",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok = crate::api::core::list_device_identities()?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -1481,6 +1510,38 @@ fn wire__crate__api__core__set_default_receive_ref_impl(
         },
     )
 }
+fn wire__crate__api__core__set_device_avatar_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_device_avatar",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client_operation_id = <String>::sse_decode(&mut deserializer);
+            let api_avatar_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, String>((move || {
+                let output_ok =
+                    crate::api::core::set_device_avatar(api_client_operation_id, api_avatar_id)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__core__set_peer_receive_policy_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1979,6 +2040,22 @@ impl SseDecode for crate::api::core::CreateGroupDto {
     }
 }
 
+impl SseDecode for crate::api::core::DeviceIdentityDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_deviceId = <String>::sse_decode(deserializer);
+        let mut var_deviceName = <String>::sse_decode(deserializer);
+        let mut var_avatarId = <String>::sse_decode(deserializer);
+        let mut var_isLocal = <bool>::sse_decode(deserializer);
+        return crate::api::core::DeviceIdentityDto {
+            device_id: var_deviceId,
+            device_name: var_deviceName,
+            avatar_id: var_avatarId,
+            is_local: var_isLocal,
+        };
+    }
+}
+
 impl SseDecode for crate::api::core::GroupDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2074,6 +2151,20 @@ impl SseDecode for Vec<crate::api::core::ConversationDto> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::core::ConversationDto>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::core::DeviceIdentityDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::core::DeviceIdentityDto>::sse_decode(
                 deserializer,
             ));
         }
@@ -2666,7 +2757,7 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        48 => wire__crate__api__core__subscribe_core_events_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__core__subscribe_core_events_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2701,50 +2792,52 @@ fn pde_ffi_dispatcher_sync_impl(
         16 => wire__crate__api__core__get_nearby_peers_impl(ptr, rust_vec_len, data_len),
         17 => wire__crate__api__core__leave_group_impl(ptr, rust_vec_len, data_len),
         18 => wire__crate__api__core__list_conversations_impl(ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__core__list_group_invitations_impl(ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__core__list_message_deliveries_impl(ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__core__list_messages_impl(ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__core__list_own_device_bindings_impl(ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__core__list_peer_receive_policies_impl(ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__core__list_transfer_entries_impl(ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__core__list_transfers_impl(ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__core__mark_conversation_read_impl(ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__core__open_private_conversation_impl(ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__core__pause_transfer_impl(ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__core__poll_platform_requests_impl(ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__core__remove_own_device_binding_impl(ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__core__replace_receive_destination_path_impl(
+        19 => wire__crate__api__core__list_device_identities_impl(ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__core__list_group_invitations_impl(ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__core__list_message_deliveries_impl(ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__core__list_messages_impl(ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__core__list_own_device_bindings_impl(ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__core__list_peer_receive_policies_impl(ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__core__list_transfer_entries_impl(ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__core__list_transfers_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__core__mark_conversation_read_impl(ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__core__open_private_conversation_impl(ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__core__pause_transfer_impl(ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__core__poll_platform_requests_impl(ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__core__remove_own_device_binding_impl(ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__core__replace_receive_destination_path_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => wire__crate__api__core__replace_receive_destination_prepared_impl(
+        33 => wire__crate__api__core__replace_receive_destination_prepared_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        33 => {
+        34 => {
             wire__crate__api__core__replace_transfer_source_items_impl(ptr, rust_vec_len, data_len)
         }
-        34 => {
+        35 => {
             wire__crate__api__core__replace_transfer_source_path_impl(ptr, rust_vec_len, data_len)
         }
-        35 => wire__crate__api__core__request_own_device_binding_impl(ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__core__resume_transfer_impl(ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__core__send_clipboard_image_items_impl(ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__core__send_clipboard_text_message_impl(ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__core__send_source_items_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__core__send_source_path_impl(ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__core__send_text_message_impl(ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__core__set_clipboard_mode_impl(ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__core__set_default_receive_ref_impl(ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__core__set_peer_receive_policy_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__core__shutdown_core_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__core__start_core_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__core__submit_local_clipboard_text_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__core__update_app_settings_impl(ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__core__update_device_name_impl(ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__core__update_group_impl(ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__core__request_own_device_binding_impl(ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__core__resume_transfer_impl(ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__core__send_clipboard_image_items_impl(ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__core__send_clipboard_text_message_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__core__send_source_items_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__core__send_source_path_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__core__send_text_message_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__core__set_clipboard_mode_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__core__set_default_receive_ref_impl(ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__core__set_device_avatar_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__core__set_peer_receive_policy_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__core__shutdown_core_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__core__start_core_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__core__submit_local_clipboard_text_impl(ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__core__update_app_settings_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__core__update_device_name_impl(ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__core__update_group_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2945,6 +3038,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::core::CreateGroupDto>
     for crate::api::core::CreateGroupDto
 {
     fn into_into_dart(self) -> crate::api::core::CreateGroupDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::core::DeviceIdentityDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.device_id.into_into_dart().into_dart(),
+            self.device_name.into_into_dart().into_dart(),
+            self.avatar_id.into_into_dart().into_dart(),
+            self.is_local.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::core::DeviceIdentityDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::core::DeviceIdentityDto>
+    for crate::api::core::DeviceIdentityDto
+{
+    fn into_into_dart(self) -> crate::api::core::DeviceIdentityDto {
         self
     }
 }
@@ -3509,6 +3625,16 @@ impl SseEncode for crate::api::core::CreateGroupDto {
     }
 }
 
+impl SseEncode for crate::api::core::DeviceIdentityDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.device_id, serializer);
+        <String>::sse_encode(self.device_name, serializer);
+        <String>::sse_encode(self.avatar_id, serializer);
+        <bool>::sse_encode(self.is_local, serializer);
+    }
+}
+
 impl SseEncode for crate::api::core::GroupDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3576,6 +3702,16 @@ impl SseEncode for Vec<crate::api::core::ConversationDto> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::core::ConversationDto>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::core::DeviceIdentityDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::core::DeviceIdentityDto>::sse_encode(item, serializer);
         }
     }
 }

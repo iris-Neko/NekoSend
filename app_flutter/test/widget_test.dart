@@ -320,7 +320,13 @@ void main() {
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
       expect(renamed, ['我的工作电脑']);
-      expect(find.text('我的工作电脑'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('device-name-setting')),
+          matching: find.text('我的工作电脑'),
+        ),
+        findsOneWidget,
+      );
       expect(controller.settings!.deviceId, 'device-name-test');
       await tester.tap(find.byKey(const ValueKey('device-name-setting')));
       await tester.pumpAndSettle();
@@ -331,7 +337,13 @@ void main() {
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(renamed, hasLength(1));
-      expect(find.text('我的工作电脑'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('device-name-setting')),
+          matching: find.text('我的工作电脑'),
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );

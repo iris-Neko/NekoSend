@@ -48,7 +48,8 @@ class PlatformBootstrap {
   static Future<PlatformBootstrap> load() async {
     _installChannelHandler();
     if (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.linux) {
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
       final result = await _channel.invokeMapMethod<String, String>(
         'getBootstrapInfo',
       );
@@ -60,9 +61,11 @@ class PlatformBootstrap {
       return PlatformBootstrap(
         dataDirectory: dataDirectory,
         deviceName: _normalizeName(deviceName),
-        platform: defaultTargetPlatform == TargetPlatform.android
-            ? 'android'
-            : 'linux',
+        platform: switch (defaultTargetPlatform) {
+          TargetPlatform.android => 'android',
+          TargetPlatform.macOS => 'macos',
+          _ => 'linux',
+        },
         legacyDeviceName: result?['legacyDeviceName'] == null
             ? null
             : _normalizeName(result!['legacyDeviceName']!),
@@ -398,7 +401,8 @@ class PlatformBootstrap {
 
   static Future<void> updateActiveTransferCount(int count) {
     if (defaultTargetPlatform != TargetPlatform.android &&
-        defaultTargetPlatform != TargetPlatform.linux) {
+        defaultTargetPlatform != TargetPlatform.linux &&
+        defaultTargetPlatform != TargetPlatform.macOS) {
       return Future<void>.value();
     }
     return _channel.invokeMethod<void>('updateActiveTransferCount', {

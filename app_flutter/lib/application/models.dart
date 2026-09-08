@@ -2,9 +2,52 @@ enum SidebarSection { conversations, nearby }
 
 enum MainContent { conversation, transfers }
 
-enum DevicePlatform { windows, android, linux }
+enum DevicePlatform { windows, android, linux, macos }
 
 enum MessageVisualKind { text, file, image, folder, clipboard }
+
+const builtinAvatarIds = [
+  'cat',
+  'dog',
+  'rabbit',
+  'bird',
+  'fish',
+  'bot',
+  'rocket',
+  'flower',
+  'mountain',
+  'coffee',
+  'moon',
+  'sun',
+];
+
+String defaultAvatarId(String deviceId) {
+  final bytes = RegExp(r'^d_[0-9a-f]{32}$').hasMatch(deviceId)
+      ? [
+          for (var i = 2; i < deviceId.length; i += 2)
+            int.parse(deviceId.substring(i, i + 2), radix: 16),
+        ]
+      : deviceId.runes;
+  final slot = bytes.fold<int>(
+    0,
+    (hash, byte) => (hash * 31 + byte) % builtinAvatarIds.length,
+  );
+  return builtinAvatarIds[slot];
+}
+
+class DeviceIdentityView {
+  const DeviceIdentityView({
+    required this.deviceId,
+    required this.deviceName,
+    required this.avatarId,
+    this.isLocal = false,
+  });
+
+  final String deviceId;
+  final String deviceName;
+  final String avatarId;
+  final bool isLocal;
+}
 
 class AppSettingsView {
   const AppSettingsView({
@@ -227,6 +270,7 @@ class ChatMessage {
     required this.outgoing,
     required this.kind,
     required this.statusLabel,
+    this.senderDeviceId = '',
     this.fileSizeLabel,
     this.localFileRef,
     this.progress,
@@ -241,6 +285,7 @@ class ChatMessage {
   final bool outgoing;
   final MessageVisualKind kind;
   final String statusLabel;
+  final String senderDeviceId;
   final String? fileSizeLabel;
   final String? localFileRef;
   final double? progress;

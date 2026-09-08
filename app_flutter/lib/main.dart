@@ -246,6 +246,7 @@ Future<void> main(List<String> arguments) async {
               platform: switch (peer.platform) {
                 'android' => DevicePlatform.android,
                 'linux' => DevicePlatform.linux,
+                'macos' => DevicePlatform.macos,
                 _ => DevicePlatform.windows,
               },
               relationLabel: switch (bindingByPeer[peer.deviceId]?.state) {
@@ -489,6 +490,7 @@ Future<void> main(List<String> arguments) async {
       final persistedBytes = message.persistedBytes;
       return ChatMessage(
         id: message.messageId,
+        senderDeviceId: message.senderDeviceId,
         content: message.text,
         timeLabel: _timeLabel(message.createdAtMs),
         outgoing: message.outgoing,
@@ -879,6 +881,20 @@ Future<void> main(List<String> arguments) async {
       settingsLoader: settingsLoader,
       settingsUpdater: settingsUpdater,
       deviceNameUpdater: deviceNameUpdater,
+      deviceIdentityLoader: () => listDeviceIdentities()
+          .map(
+            (item) => DeviceIdentityView(
+              deviceId: item.deviceId,
+              deviceName: item.deviceName,
+              avatarId: item.avatarId,
+              isLocal: item.isLocal,
+            ),
+          )
+          .toList(growable: false),
+      deviceAvatarUpdater: (avatarId) => setDeviceAvatar(
+        clientOperationId: generateClientOperationId(),
+        avatarId: avatarId,
+      ),
       peerReceivePolicyLoader: peerReceivePolicyLoader,
       peerReceivePolicyUpdater: peerReceivePolicyUpdater,
       systemNotificationCommand: systemNotificationCommand,
@@ -997,6 +1013,16 @@ void _registerDebugExtensions(
                       'state': binding.state,
                       'clipboardMode': binding.clipboardMode,
                       'online': binding.online,
+                    },
+                  )
+                  .toList(),
+              'identities': listDeviceIdentities()
+                  .map(
+                    (identity) => {
+                      'deviceId': identity.deviceId,
+                      'deviceName': identity.deviceName,
+                      'avatarId': identity.avatarId,
+                      'isLocal': identity.isLocal,
                     },
                   )
                   .toList(),
@@ -1126,6 +1152,13 @@ void _registerDebugExtensions(
               'deviceId': profile.deviceId,
               'deviceName': profile.deviceName,
               'discoveryAvailable': profile.discoveryAvailable,
+            };
+          case 'set_avatar':
+            result = {
+              'avatarId': setDeviceAvatar(
+                clientOperationId: generateClientOperationId(),
+                avatarId: requiredParameter(parameters, 'avatarId'),
+              ),
             };
           case 'clear_receive_ref':
             setDefaultReceiveRef(

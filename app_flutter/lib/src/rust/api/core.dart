@@ -11,10 +11,21 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `app_settings_dto`, `conversation_dto`, `message_delivery_dto`, `message_dto`, `parse_platform`, `parse_source_message_kind`, `platform_name`, `publish_message_result`, `publish_source_result`, `start_network_pair`, `transfer_dto`, `with_runtime`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `CoreRuntime`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Stream<CoreEventDto> subscribeCoreEvents() =>
     RustLib.instance.api.crateApiCoreSubscribeCoreEvents();
+
+List<DeviceIdentityDto> listDeviceIdentities() =>
+    RustLib.instance.api.crateApiCoreListDeviceIdentities();
+
+String setDeviceAvatar({
+  required String clientOperationId,
+  required String avatarId,
+}) => RustLib.instance.api.crateApiCoreSetDeviceAvatar(
+  clientOperationId: clientOperationId,
+  avatarId: avatarId,
+);
 
 CoreErrorDto describeCoreError({required String message}) =>
     RustLib.instance.api.crateApiCoreDescribeCoreError(message: message);
@@ -612,6 +623,37 @@ class CreateGroupDto {
           groupId == other.groupId &&
           conversationId == other.conversationId &&
           inviteIds == other.inviteIds;
+}
+
+class DeviceIdentityDto {
+  final String deviceId;
+  final String deviceName;
+  final String avatarId;
+  final bool isLocal;
+
+  const DeviceIdentityDto({
+    required this.deviceId,
+    required this.deviceName,
+    required this.avatarId,
+    required this.isLocal,
+  });
+
+  @override
+  int get hashCode =>
+      deviceId.hashCode ^
+      deviceName.hashCode ^
+      avatarId.hashCode ^
+      isLocal.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeviceIdentityDto &&
+          runtimeType == other.runtimeType &&
+          deviceId == other.deviceId &&
+          deviceName == other.deviceName &&
+          avatarId == other.avatarId &&
+          isLocal == other.isLocal;
 }
 
 class GroupDto {

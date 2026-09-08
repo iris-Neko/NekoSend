@@ -160,6 +160,15 @@ flutter test app_flutter
 - Wayland 显示在真实 KDE 桌面检查，键盘自动化另在隔离 X11 显示器上操作同一 Release 包；文件门户仍走实际 KDE。结束后切回真实桌面，未使用调试扩展作为 Linux 发布包验收证据。测试截图和日志位于本机忽略目录，未作为用户数据提交 Git。
 - 本轮不等同于完整 V1 发布签署：Android 16 锁屏冻结、不同厂商 Android 与双 Windows 矩阵、生产 Android 签名、提升权限安装/防火墙验收和 DOC-008 仍按原记录保留；Linux 的多发行版、开机启动授权及不同 Wayland 剪贴板策略仍有兼容性风险。
 
+### 消息头像与昵称（2026-09-08）
+
+- 私聊和群聊每条气泡外显示发送者头像与昵称，自己靠右、对端靠左。消息保留 sender_device_id，界面从持久化身份资料解析昵称与头像，不依赖对端此刻在线；附近列表、私聊标题和群成员列表使用同一缓存。
+- 设置新增 12 款内置图案选择器，取消不写入，保存失败保留选择；默认头像按 DeviceId 稳定分配。Schema V5 仅新增 device_avatars；announce 与 hello/hello_ack 可选携带 avatar_id，旧端省略字段和未来未知值不清除有效缓存。
+- Rust workspace 94/94、Flutter 65/65 通过，包含默认分配一致性、幂等保存、无效 ID、旧端兼容、UDP 更新、TCP 可选字段、私聊/群聊发送者对应关系、离线昵称、移动端长昵称和保存/取消/失败状态。Windows Debug/Release 与 Android ARM64 Debug 构建成功，Windows 与在线的 K40 已更新。
+- 实机中 Windows 与 K40 分别改为 cat 与 rocket 后，双方身份快照一致；K40 离线后 Windows 仍保留其昵称和 rocket，手机进程重启后本机与对端头像均保留，私聊原有 11 个 MessageId 和顺序完全不变。最后恢复 Windows 原默认 sun、K40 原默认 cat，未清除原有消息或绑定；第二台 Android 手机已断开，本轮没有对它执行安装或实机签署。
+- UI 截图以测试字体加载方式检查桌面私聊、桌面群聊与 360px 手机群聊布局；运行输出与截图保存在本机忽略目录 `.e2e-data/20260908/avatars/`，不作为用户资料上传。头像为本地 Lucide 图案与配色，不使用远程图片或外部账号。
+- 第二台 Xiaomi 14 随后重新连接，头像新版覆盖安装成功。将其原 rabbit 临时改为 bird 后，Windows、K40、Xiaomi 14 三端身份快照的昵称、DeviceId 和头像一致；它发送的私聊及群聊测试消息均在双方恰好入库一次且 delivered，sender_device_id 正确。手机进程重启后自选头像与昵称保留，旧群消息仍存在；最后恢复 rabbit 并确认三端同步。该补测消除了上条“第二台未连接”造成的头像实机覆盖缺口，但不替代此前未运行的 Android 16 instrumentation 或后台冻结验收。
+
 ## ID、枚举和状态单元测试
 
 | ID | 场景 | 期望 |
@@ -338,6 +347,7 @@ DDL 测试必须在真正 SQLite 上运行，不用内存 Map 模拟约束。
 | `UI-012` | 左栏会话/附近 Tab、搜索、设置和传输入口 | 入口无重复导航，切换后列表和右栏行为符合产品文档 |
 | `UI-013` | Windows 发送快捷键与输入法 | 普通/小键盘回车发送且保留焦点，Shift+Enter 换行；组合输入不误发、长按不重复、失败保留草稿，Android 行为不变 |
 | `UI-014` | 修改本机名称 | 整行可编辑，保存立即刷新；取消不修改，无效输入被拒绝，失败保留草稿 |
+| `UI-015` | 私聊/群聊头像昵称 | 每条消息对应真实发送者，离线保留资料，长昵称不溢出；12 款头像可选，取消不修改、失败可重试 |
 
 Widget 测试使用权威 DTO 枚举构造假数据，不复制状态机到测试 helper。
 
@@ -489,7 +499,7 @@ Widget 测试使用权威 DTO 枚举构造假数据，不复制状态机到测�
 | RQ-010 | data socket/buffer/scheduler | PERF-01..02, QA-02 | PERF-001..010 |
 | RQ-011 | schema/outbox/processed events | CORE-02, DB-01..02, FILE-04 | DB-001..013, FI-001..009 |
 | RQ-012 | PlatformAdapter | WIN-01, AND-01..03 | WIN-001..009, AND-001..016 |
-| RQ-013 | Core DTO/ViewModel | UI-01..02 | UI-001..014, E2E-001..005 |
+| RQ-013 | Core DTO/ViewModel | UI-01..02 | UI-001..015, E2E-001..005 |
 
 任何新需求必须先获得新 `RQ-` ID，并同时更新产品文档、实施任务和测试，不允许只有 UI 或只有协议改动。
 

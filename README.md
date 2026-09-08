@@ -26,9 +26,11 @@
 - `perf_harness` 原始 TCP 大文件收发命令，文件字节不经过 Flutter、JSON、哈希或 SQLite。
 - `integration_harness` TCP 回环传输与接收端持久化确认测试。
 - Flutter Windows/Android 工程、Windows 双栏布局、窄窗口单栏路由和 Android 底部导航。
-- 完整 SQLite Schema V4、V1 → V4 无损迁移、WAL 配置、稳定 `DeviceId`、附近设备持久化和私聊文字事务；V4 新增 Linux 平台值，升级数据库后不可用旧版本应用直接打开。
+- 完整 SQLite Schema V6、V1 → V6 无损迁移、WAL 配置、稳定 `DeviceId`、附近设备持久化和私聊文字事务；V4 新增 Linux 平台值，V5 新增头像缓存，V6 新增 macOS 平台值，升级数据库后不可用旧版本应用直接打开。
+- macOS 0.3.0 测试包：原生菜单栏、文件选择、剪贴板和通知适配，云端构建 Universal DMG/ZIP；本地临时签名，无 Apple 公证。详见 `packaging/macos/README.md`。跨 Mac 通信需要其他端也更新到 0.3.0。
 - UDP 自动发现（2 秒广播、7 秒离线）已在 Windows 与 Android 真机同一 Wi-Fi 双向验证。
 - 每台设备可在“设置 -> 设备名称”修改自己的名称；Android 默认优先使用系统提供的可读机型，兼容升级旧默认型号代码且不覆盖自定义名称。改名保持 DeviceId 不变，并同步附近列表和已有私聊标题。
+- 私聊和群聊消息显示发送者头像与昵称；“设置 -> 头像”提供 12 款内置图案，按 DeviceId 稳定分配默认头像，选择后同步给附近设备并在离线/重启后保留。昵称沿用设备名称，不新增账号。
 - TCP `53318` 长期双向控制连接、4 字节大端长度帧、Hello、同连接双向消息、`ping/pong`、投递回执、去重和永久 outbox 重试；同时建连时按 `(initiator_device_id, connection_id)` 确定性保留一条连接。
 - Rust → Flutter 使用容量 1,024 的事件流；消息、邀请、绑定、在线状态和最多每 250ms 一次的传输进度按类别局部刷新，断流后一秒重订阅并用快照校正。
 - Android 已接入前台服务，用于维持 Flutter/Rust 引擎、UDP/TCP 和后台发送队列；实际后台可用性仍需逐机型验证，后台剪贴板读取按系统限制禁用。

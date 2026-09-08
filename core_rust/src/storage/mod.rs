@@ -24,15 +24,19 @@ use crate::{
 
 mod bindings;
 mod groups;
+mod identities;
 
 pub use bindings::*;
 pub use groups::*;
+pub use identities::*;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 6;
 const MIGRATION_V1: &str = include_str!("migration_v1.sql");
 const MIGRATION_V2: &str = include_str!("migration_v2.sql");
 const MIGRATION_V3: &str = include_str!("migration_v3.sql");
 const MIGRATION_V4: &str = include_str!("migration_v4.sql");
+const MIGRATION_V5: &str = include_str!("migration_v5.sql");
+const MIGRATION_V6: &str = include_str!("migration_v6.sql");
 const MAX_CLIPBOARD_TEXT_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,6 +217,8 @@ pub enum StorageError {
     InvalidStoredDeviceId,
     #[error("device name must contain 1-32 characters and at most 128 UTF-8 bytes")]
     InvalidDeviceName,
+    #[error("avatar must be a supported built-in avatar id")]
+    InvalidAvatar,
     #[error("text message must contain 1-20,000 Unicode characters")]
     InvalidText,
     #[error("invalid transfer manifest: {0}")]
@@ -654,6 +660,7 @@ impl Storage {
                                     "windows" => Platform::Windows,
                                     "android" => Platform::Android,
                                     "linux" => Platform::Linux,
+                                    "macos" => Platform::Macos,
                                     _ => return Err(StorageError::InvalidStoredId),
                                 },
                                 created_at_ms,
@@ -4611,6 +4618,73 @@ impl Storage {
                         return Err(StorageError::InvalidMigrationForeignKeys);
                     }
                     transaction
+                        .pragma_update(None, "user_version", 4)
+                        .map_err(StorageError::Migration)?;
+                } else if !(4..=SCHEMA_VERSION).contains(&locked_version) {
+                    return Err(StorageError::UnsupportedSchema(locked_version));
+                }
+                transaction.commit().map_err(StorageError::Migration)
+            })();
+            let restored = self
+                .connection
+                .pragma_update(None, "foreign_keys", true)
+                .map_err(StorageError::Migration);
+            migrated?;
+            restored?;
+            version = self
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .map_err(StorageError::Migration)?;
+        }
+        if version == 4 {
+            let transaction = self
+                .connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(StorageError::Migration)?;
+            let locked_version: i64 = transaction
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .map_err(StorageError::Migration)?;
+            if locked_version == 4 {
+                transaction
+                    .execute_batch(MIGRATION_V5)
+                    .map_err(StorageError::Migration)?;
+                transaction
+                    .pragma_update(None, "user_version", 5)
+                    .map_err(StorageError::Migration)?;
+            } else if !(5..=SCHEMA_VERSION).contains(&locked_version) {
+                return Err(StorageError::UnsupportedSchema(locked_version));
+            }
+            transaction.commit().map_err(StorageError::Migration)?;
+        }
+        version = self
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(StorageError::Migration)?;
+        if version == 5 {
+            self.connection
+                .pragma_update(None, "foreign_keys", false)
+                .map_err(StorageError::Migration)?;
+            let migrated = (|| {
+                let transaction = self
+                    .connection
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .map_err(StorageError::Migration)?;
+                let locked_version: i64 = transaction
+                    .query_row("PRAGMA user_version", [], |row| row.get(0))
+                    .map_err(StorageError::Migration)?;
+                if locked_version == 5 {
+                    transaction
+                        .execute_batch(MIGRATION_V6)
+                        .map_err(StorageError::Migration)?;
+                    let violations: i64 = transaction
+                        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                            row.get(0)
+                        })
+                        .map_err(StorageError::Migration)?;
+                    if violations != 0 {
+                        return Err(StorageError::InvalidMigrationForeignKeys);
+                    }
+                    transaction
                         .pragma_update(None, "user_version", SCHEMA_VERSION)
                         .map_err(StorageError::Migration)?;
                 } else if locked_version != SCHEMA_VERSION {
@@ -5187,6 +5261,7 @@ fn platform_name(platform: Platform) -> &'static str {
         Platform::Windows => "windows",
         Platform::Android => "android",
         Platform::Linux => "linux",
+        Platform::Macos => "macos",
     }
 }
 
@@ -5259,7 +5334,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .unwrap(),
-            17
+            18
         );
         drop(first);
         Storage::open(path).unwrap();
@@ -5469,6 +5544,67 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Platform::Linux).unwrap(),
             "\"linux\""
+        );
+    }
+
+    #[test]
+    fn v5_upgrade_preserves_profile_peer_avatar_and_accepts_macos() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("macos-v6.db");
+        let connection = Connection::open(&path).unwrap();
+        for sql in [
+            MIGRATION_V1,
+            MIGRATION_V2,
+            MIGRATION_V3,
+            MIGRATION_V4,
+            MIGRATION_V5,
+        ] {
+            connection.execute_batch(sql).unwrap();
+        }
+        connection.pragma_update(None, "user_version", 5).unwrap();
+        let mut old = Storage {
+            connection,
+            path: path.clone(),
+        };
+        let profile = old
+            .load_or_create_profile("Existing PC", Platform::Windows)
+            .unwrap();
+        let peer = DeviceId::generate();
+        old.upsert_nearby_peer(peer, "Phone", Platform::Android, "127.0.0.1", 1)
+            .unwrap();
+        old.store_peer_avatar(peer, Some("moon")).unwrap();
+        drop(old);
+        let mut migrated = Storage::open(&path).unwrap();
+        assert_eq!(
+            migrated
+                .load_or_create_profile("Ignored", Platform::Windows)
+                .unwrap()
+                .device_id,
+            profile.device_id
+        );
+        assert_eq!(migrated.avatar_id(peer).unwrap(), "moon");
+        migrated
+            .upsert_nearby_peer(DeviceId::generate(), "Mac", Platform::Macos, "127.0.0.2", 2)
+            .unwrap();
+        let violations: i64 = migrated
+            .connection
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(violations, 0);
+        let mac_path = temp.path().join("mac.db");
+        let mut mac = Storage::open(&mac_path).unwrap();
+        let identity = mac
+            .load_or_create_profile("MacBook", Platform::Macos)
+            .unwrap();
+        drop(mac);
+        assert_eq!(
+            Storage::open(&mac_path)
+                .unwrap()
+                .load_or_create_profile("Ignored", Platform::Macos)
+                .unwrap(),
+            identity
         );
     }
 

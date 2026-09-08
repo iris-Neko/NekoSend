@@ -229,6 +229,8 @@ struct Hello {
     initiator_device_id: DeviceId,
     device_id: DeviceId,
     device_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    avatar_id: Option<String>,
     platform: Platform,
     app_version: String,
     protocol_min: u16,
@@ -244,6 +246,8 @@ struct HelloAck {
     connection_id: EventId,
     device_id: DeviceId,
     device_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    avatar_id: Option<String>,
     platform: Platform,
     selected_protocol: u16,
     received_at_ms: i64,
@@ -732,6 +736,7 @@ fn handle_incoming(
         &source_ip.to_string(),
         unix_time_ms(),
     )?;
+    storage.store_peer_avatar(hello.device_id, hello.avatar_id.as_deref())?;
     write_json_frame(
         stream,
         &HelloAck {
@@ -740,6 +745,7 @@ fn handle_incoming(
             connection_id: hello.connection_id,
             device_id: profile.device_id,
             device_name: profile.device_name.clone(),
+            avatar_id: Some(storage.avatar_id(profile.device_id)?),
             platform: profile.platform,
             selected_protocol: PROTOCOL_VERSION,
             received_at_ms: unix_time_ms(),
@@ -1458,6 +1464,7 @@ fn protocol_error_code(error: &ControlError) -> Option<&'static str> {
             StorageError::ClipboardTooLarge => Some("CLIPBOARD_TOO_LARGE"),
             StorageError::InvalidStoredDeviceId
             | StorageError::InvalidDeviceName
+            | StorageError::InvalidAvatar
             | StorageError::InvalidGroupName
             | StorageError::InvalidGroupMembers
             | StorageError::InvalidGroupUpdate
@@ -1682,6 +1689,7 @@ fn connect_outgoing_stream(
     profile: &LocalProfile,
     peer_device_id: DeviceId,
     address: SocketAddr,
+    avatar_id: Option<String>,
 ) -> Result<(TcpStream, Hello, ConnectionKey), ControlError> {
     let mut stream = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT)?;
     configure_stream(&stream)?;
@@ -1695,6 +1703,7 @@ fn connect_outgoing_stream(
             initiator_device_id: profile.device_id,
             device_id: profile.device_id,
             device_name: profile.device_name.clone(),
+            avatar_id,
             platform: profile.platform,
             app_version: CORE_VERSION.to_owned(),
             protocol_min: PROTOCOL_VERSION,
@@ -1718,6 +1727,7 @@ fn connect_outgoing_stream(
         initiator_device_id: profile.device_id,
         device_id: ack.device_id,
         device_name: ack.device_name,
+        avatar_id: ack.avatar_id,
         platform: ack.platform,
         app_version: String::new(),
         protocol_min: PROTOCOL_VERSION,
@@ -1742,7 +1752,18 @@ fn start_outgoing_actor(
     connections: &Arc<ConnectionRegistry>,
     stop: &Arc<AtomicBool>,
 ) -> Result<(), ControlError> {
-    let (mut stream, hello, key) = connect_outgoing_stream(profile, peer_device_id, address)?;
+    let storage = Storage::open(database_path)?;
+    let avatar = storage.avatar_id(profile.device_id)?;
+    let (mut stream, hello, key) =
+        connect_outgoing_stream(profile, peer_device_id, address, Some(avatar))?;
+    storage.upsert_nearby_peer(
+        hello.device_id,
+        &hello.device_name,
+        hello.platform,
+        &address.ip().to_string(),
+        unix_time_ms(),
+    )?;
+    storage.store_peer_avatar(hello.device_id, hello.avatar_id.as_deref())?;
     let (commands, receiver) = mpsc::channel();
     match connections.register(
         peer_device_id,
@@ -1856,7 +1877,7 @@ impl OutgoingControlConnection {
         peer_device_id: DeviceId,
         address: SocketAddr,
     ) -> Result<Self, ControlError> {
-        let (stream, _, _) = connect_outgoing_stream(profile, peer_device_id, address)?;
+        let (stream, _, _) = connect_outgoing_stream(profile, peer_device_id, address, None)?;
         Ok(Self {
             stream,
             last_activity: Instant::now(),
@@ -2250,6 +2271,7 @@ mod tests {
             initiator_device_id: local.device_id,
             device_id: remote.device_id,
             device_name: remote.device_name.clone(),
+            avatar_id: None,
             platform: remote.platform,
             app_version: CORE_VERSION.to_owned(),
             protocol_min: PROTOCOL_VERSION,
@@ -2708,6 +2730,38 @@ mod tests {
     }
 
     #[test]
+    fn hello_avatar_extension_is_optional_for_older_clients() {
+        let local = LocalProfile {
+            device_id: DeviceId::from_bytes([1; 16]),
+            device_name: "PC".to_owned(),
+            platform: Platform::Windows,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        };
+        let remote = LocalProfile {
+            device_id: DeviceId::from_bytes([2; 16]),
+            device_name: "Phone".to_owned(),
+            platform: Platform::Android,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        };
+        let mut hello = hello_for_remote(&remote, &remote, EventId::generate());
+        hello.avatar_id = Some("bird".to_owned());
+        let mut value = serde_json::to_value(&hello).unwrap();
+        assert!(
+            validate_hello(
+                &serde_json::from_value(value.clone()).unwrap(),
+                local.device_id
+            )
+            .is_ok()
+        );
+        value.as_object_mut().unwrap().remove("avatar_id");
+        let old: Hello = serde_json::from_value(value).unwrap();
+        assert!(old.avatar_id.is_none());
+        assert!(validate_hello(&old, local.device_id).is_ok());
+    }
+
+    #[test]
     fn accepted_stream_waits_for_a_delayed_first_frame() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -2783,6 +2837,7 @@ mod tests {
                 initiator_device_id: sender.device_id,
                 device_id: sender.device_id,
                 device_name: sender.device_name,
+                avatar_id: None,
                 platform: sender.platform,
                 app_version: "2.0.0".to_owned(),
                 protocol_min: 2,

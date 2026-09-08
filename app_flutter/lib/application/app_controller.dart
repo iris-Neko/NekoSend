@@ -94,6 +94,8 @@ typedef SettingsUpdater = Future<AppSettingsView> Function(
   AppSettingsView settings,
 );
 typedef DeviceNameUpdater = AppSettingsView Function(String deviceName);
+typedef DeviceIdentityLoader = List<DeviceIdentityView> Function();
+typedef DeviceAvatarUpdater = void Function(String avatarId);
 typedef PeerReceivePolicyLoader = List<PeerReceivePolicyView> Function();
 typedef PeerReceivePolicyUpdater = void Function(
   String peerDeviceId,
@@ -193,6 +195,8 @@ class AppController extends ChangeNotifier {
     this.settingsLoader,
     this.settingsUpdater,
     this.deviceNameUpdater,
+    this.deviceIdentityLoader,
+    this.deviceAvatarUpdater,
     this.peerReceivePolicyLoader,
     this.peerReceivePolicyUpdater,
     this.systemNotificationCommand,
@@ -256,6 +260,87 @@ class AppController extends ChangeNotifier {
   final SettingsLoader? settingsLoader;
   final SettingsUpdater? settingsUpdater;
   final DeviceNameUpdater? deviceNameUpdater;
+  final DeviceIdentityLoader? deviceIdentityLoader;
+  final DeviceAvatarUpdater? deviceAvatarUpdater;
+  final Map<String, DeviceIdentityView> deviceIdentities = {};
+
+  DeviceIdentityView identityFor(String deviceId, {String? fallbackName}) {
+    final saved = deviceIdentities[deviceId];
+    if (saved != null) return saved;
+    final local = settings;
+    if (local != null && local.deviceId == deviceId) {
+      return DeviceIdentityView(
+        deviceId: deviceId,
+        deviceName: local.deviceName,
+        avatarId: defaultAvatarId(deviceId),
+        isLocal: true,
+      );
+    }
+    for (final peer in nearbyDevices) {
+      if (peer.id == deviceId) {
+        return DeviceIdentityView(
+          deviceId: deviceId,
+          deviceName: peer.name,
+          avatarId: defaultAvatarId(deviceId),
+        );
+      }
+    }
+    return DeviceIdentityView(
+      deviceId: deviceId,
+      deviceName:
+          fallbackName ??
+          (deviceId.isEmpty
+              ? '未知设备'
+              : '设备 ${deviceId.substring(deviceId.length > 6 ? deviceId.length - 6 : 0)}'),
+      avatarId: defaultAvatarId(deviceId),
+    );
+  }
+
+  DeviceIdentityView get localIdentity => deviceIdentities.values.firstWhere(
+    (identity) => identity.isLocal,
+    orElse: () => identityFor(
+      settings?.deviceId ?? 'local',
+      fallbackName: settings?.deviceName ?? '本机',
+    ),
+  );
+
+  DeviceIdentityView senderIdentity(ChatMessage message) {
+    if (message.outgoing) return localIdentity;
+    final conversation = hasSelectedConversation ? selectedConversation : null;
+    final id = message.senderDeviceId.isNotEmpty
+        ? message.senderDeviceId
+        : conversation?.peerDeviceId ?? '';
+    return identityFor(
+      id,
+      fallbackName: conversation?.isGroup == false ? conversation!.title : null,
+    );
+  }
+
+  void _refreshIdentities() {
+    final loader = deviceIdentityLoader;
+    if (loader == null) return;
+    final loaded = loader();
+    deviceIdentities
+      ..clear()
+      ..addEntries(loaded.map((item) => MapEntry(item.deviceId, item)));
+  }
+
+  bool changeAvatar(String avatarId) {
+    final update = deviceAvatarUpdater;
+    if (update == null || !builtinAvatarIds.contains(avatarId)) return false;
+    try {
+      lastError = null;
+      update(avatarId);
+      _refreshIdentities();
+      notifyListeners();
+      return true;
+    } catch (error) {
+      lastError = error.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   final PeerReceivePolicyLoader? peerReceivePolicyLoader;
   final PeerReceivePolicyUpdater? peerReceivePolicyUpdater;
   final SystemNotificationCommand? systemNotificationCommand;
@@ -510,6 +595,13 @@ class AppController extends ChangeNotifier {
     bool includeSettings = true,
   }) {
     var changed = false;
+    if (includeNearby || includeConversations || includeSettings) {
+      try {
+        _refreshIdentities();
+      } catch (_) {
+        /* Retain cached identities until the next snapshot. */
+      }
+    }
     final nearbyLoader = nearbyPeerLoader;
     if (includeNearby && nearbyLoader != null) {
       try {
@@ -704,6 +796,7 @@ class AppController extends ChangeNotifier {
     try {
       lastError = null;
       settings = update(deviceName);
+      _refreshIdentities();
       notifyListeners();
       return true;
     } catch (error) {

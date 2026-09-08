@@ -10,6 +10,7 @@ import '../application/app_controller.dart';
 import '../application/models.dart';
 import '../platform/platform_bootstrap.dart';
 import '../src/rust/api/core.dart';
+import 'device_avatar.dart';
 
 const _ink = Color(0xFF172126);
 const _muted = Color(0xFF66757D);
@@ -90,6 +91,8 @@ class LanChatApp extends StatefulWidget {
     this.settingsLoader,
     this.settingsUpdater,
     this.deviceNameUpdater,
+    this.deviceIdentityLoader,
+    this.deviceAvatarUpdater,
     this.peerReceivePolicyLoader,
     this.peerReceivePolicyUpdater,
     this.systemNotificationCommand,
@@ -142,6 +145,8 @@ class LanChatApp extends StatefulWidget {
   final SettingsLoader? settingsLoader;
   final SettingsUpdater? settingsUpdater;
   final DeviceNameUpdater? deviceNameUpdater;
+  final DeviceIdentityLoader? deviceIdentityLoader;
+  final DeviceAvatarUpdater? deviceAvatarUpdater;
   final PeerReceivePolicyLoader? peerReceivePolicyLoader;
   final PeerReceivePolicyUpdater? peerReceivePolicyUpdater;
   final SystemNotificationCommand? systemNotificationCommand;
@@ -205,6 +210,8 @@ class _LanChatAppState extends State<LanChatApp> {
       settingsLoader: widget.settingsLoader,
       settingsUpdater: widget.settingsUpdater,
       deviceNameUpdater: widget.deviceNameUpdater,
+      deviceIdentityLoader: widget.deviceIdentityLoader,
+      deviceAvatarUpdater: widget.deviceAvatarUpdater,
       peerReceivePolicyLoader: widget.peerReceivePolicyLoader,
       peerReceivePolicyUpdater: widget.peerReceivePolicyUpdater,
       systemNotificationCommand: widget.systemNotificationCommand,
@@ -605,6 +612,9 @@ class _ConversationList extends StatelessWidget {
             controller.selectedConversationId == conversation.id;
         return _ConversationTile(
           conversation: conversation,
+          identity: controller.identityFor(
+            conversation.peerDeviceId ?? conversation.id,
+          ),
           selected: selected,
           onTap: () => controller.selectConversation(conversation.id),
         );
@@ -616,11 +626,13 @@ class _ConversationList extends StatelessWidget {
 class _ConversationTile extends StatelessWidget {
   const _ConversationTile({
     required this.conversation,
+    required this.identity,
     required this.selected,
     required this.onTap,
   });
 
   final ConversationSummary conversation;
+  final DeviceIdentityView identity;
   final bool selected;
   final VoidCallback onTap;
 
@@ -642,6 +654,8 @@ class _ConversationTile extends StatelessWidget {
                   label: conversation.title,
                   group: conversation.isGroup,
                   online: conversation.online,
+                  deviceId: conversation.peerDeviceId ?? conversation.id,
+                  avatarId: identity.avatarId,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -824,7 +838,10 @@ class _NearbyList extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(6),
             ),
-            leading: _DeviceIcon(platform: device.platform),
+            leading: DeviceAvatar(
+              deviceId: device.id,
+              avatarId: controller.identityFor(device.id).avatarId,
+            ),
             title: Text(
               device.name,
               maxLines: 1,
@@ -1293,6 +1310,9 @@ class _ConversationPaneState extends State<_ConversationPane> {
           children: [
             _ChatHeader(
               conversation: conversation,
+              identity: widget.controller.identityFor(
+                conversation.peerDeviceId ?? conversation.id,
+              ),
               onMore: () => _showConversationActions(context, conversation),
               onBack: widget.showBackButton
                   ? widget.controller.showCompactList
@@ -1315,6 +1335,7 @@ class _ConversationPaneState extends State<_ConversationPane> {
                           ? focusedMessageKey
                           : ValueKey('message-${message.id}'),
                       message: message,
+                      sender: widget.controller.senderIdentity(message),
                       onOpen: message.localFileRef == null
                           ? null
                           : () => _openReference(
@@ -1716,7 +1737,14 @@ String _clipboardModeLabel(String mode) => switch (mode) {
 };
 
 class _ChatHeader extends StatelessWidget {
-  const _ChatHeader({required this.conversation, this.onBack, this.onMore});
+  const _ChatHeader({
+    required this.conversation,
+    required this.identity,
+    this.onBack,
+    this.onMore,
+  });
+
+  final DeviceIdentityView identity;
 
   final ConversationSummary conversation;
   final VoidCallback? onBack;
@@ -1743,6 +1771,8 @@ class _ChatHeader extends StatelessWidget {
             label: conversation.title,
             group: conversation.isGroup,
             online: conversation.online,
+            deviceId: identity.deviceId,
+            avatarId: identity.avatarId,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1868,7 +1898,12 @@ class _GroupDetailsDialogState extends State<_GroupDetailsDialog> {
                   final owner = member.role == 'owner';
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: _MemberAvatar(member: member),
+                    leading: DeviceAvatar(
+                      deviceId: member.deviceId,
+                      avatarId: widget.controller
+                          .identityFor(member.deviceId)
+                          .avatarId,
+                    ),
                     title: Text(_memberName(member.deviceId)),
                     subtitle: Text(
                       owner
@@ -1920,11 +1955,7 @@ class _GroupDetailsDialogState extends State<_GroupDetailsDialog> {
   }
 
   String _memberName(String deviceId) {
-    for (final device in widget.controller.nearbyDevices) {
-      if (device.id == deviceId) return device.name;
-    }
-    if (deviceId == group.ownerDeviceId && group.isOwner) return '本机';
-    return '${deviceId.substring(0, 10)}…';
+    return widget.controller.identityFor(deviceId).deviceName;
   }
 
   Future<void> _rename() async {
@@ -2039,52 +2070,6 @@ class _GroupDetailsDialogState extends State<_GroupDetailsDialog> {
   }
 }
 
-class _MemberAvatar extends StatelessWidget {
-  const _MemberAvatar({required this.member});
-
-  final GroupMemberView member;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 36,
-      height: 36,
-      child: Stack(
-        children: [
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _accentSoft,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                LucideIcons.monitorSmartphone,
-                size: 18,
-                color: _accent,
-              ),
-            ),
-          ),
-          if (member.online)
-            const Positioned(
-              right: 0,
-              bottom: 0,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFF19A974),
-                  shape: BoxShape.circle,
-                  border: Border.fromBorderSide(
-                    BorderSide(color: Colors.white, width: 2),
-                  ),
-                ),
-                child: SizedBox(width: 10, height: 10),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PickGroupMembersDialog extends StatefulWidget {
   const _PickGroupMembersDialog({required this.devices});
 
@@ -2152,18 +2137,72 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     super.key,
     required this.message,
+    required this.sender,
     this.onStatusTap,
     this.onOpen,
     this.onShowLocation,
   });
 
   final ChatMessage message;
+  final DeviceIdentityView sender;
   final VoidCallback? onStatusTap;
   final VoidCallback? onOpen;
   final VoidCallback? onShowLocation;
 
   @override
   Widget build(BuildContext context) {
+    final avatar = DeviceAvatar(
+      key: ValueKey('message-avatar-${message.id}'),
+      deviceId: sender.deviceId,
+      avatarId: sender.avatarId,
+      size: 36,
+      semanticLabel: '${sender.deviceName}的头像',
+    );
+    return Align(
+      alignment: message.outgoing
+          ? Alignment.centerRight
+          : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 488),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!message.outgoing) ...[avatar, const SizedBox(width: 8)],
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: message.outgoing
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  Tooltip(
+                    message: sender.deviceName,
+                    child: Text(
+                      sender.deviceName,
+                      key: ValueKey('message-sender-${message.id}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  _buildBubble(context),
+                ],
+              ),
+            ),
+            if (message.outgoing) ...[const SizedBox(width: 8), avatar],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBubble(BuildContext context) {
     final isFile = message.kind != MessageVisualKind.text;
     return Align(
       alignment: message.outgoing
@@ -3272,6 +3311,24 @@ class _SettingsContent extends StatelessWidget {
     return ListView(
       children: [
         ListTile(
+          key: const ValueKey('device-avatar-setting'),
+          leading: DeviceAvatar(
+            deviceId: controller.localIdentity.deviceId,
+            avatarId: controller.localIdentity.avatarId,
+            size: 44,
+          ),
+          title: const Text('头像'),
+          subtitle: Text(
+            builtinAvatarStyles[controller.localIdentity.avatarId]?.name ??
+                '默认头像',
+          ),
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => _AvatarPickerDialog(controller: controller),
+          ),
+          trailing: const Icon(LucideIcons.chevronRight, size: 18),
+        ),
+        ListTile(
           key: const ValueKey('device-name-setting'),
           title: const Text('设备名称'),
           subtitle: Text(settings.deviceName),
@@ -3529,6 +3586,121 @@ class _RenameDeviceDialogState extends State<_RenameDeviceDialog> {
   );
 }
 
+class _AvatarPickerDialog extends StatefulWidget {
+  const _AvatarPickerDialog({required this.controller});
+
+  final AppController controller;
+
+  @override
+  State<_AvatarPickerDialog> createState() => _AvatarPickerDialogState();
+}
+
+class _AvatarPickerDialogState extends State<_AvatarPickerDialog> {
+  late String selected = widget.controller.localIdentity.avatarId;
+  String? error;
+
+  void _save() {
+    if (selected == widget.controller.localIdentity.avatarId) {
+      Navigator.pop(context);
+    } else if (widget.controller.changeAvatar(selected)) {
+      Navigator.pop(context);
+    } else {
+      setState(() => error = widget.controller.lastError ?? '头像保存失败，请重试');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('选择头像'),
+    content: SizedBox(
+      width: 320,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GridView.count(
+            key: const ValueKey('builtin-avatar-grid'),
+            crossAxisCount: 4,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              for (final entry in builtinAvatarStyles.entries)
+                Semantics(
+                  selected: entry.key == selected,
+                  button: true,
+                  label: entry.value.name,
+                  child: Tooltip(
+                    message: entry.value.name,
+                    child: InkWell(
+                      key: ValueKey('avatar-option-${entry.key}'),
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => setState(() {
+                        selected = entry.key;
+                        error = null;
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            width: 2,
+                            color: entry.key == selected
+                                ? _accent
+                                : Colors.transparent,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: FittedBox(
+                                child: DeviceAvatar(
+                                  deviceId:
+                                      widget.controller.localIdentity.deviceId,
+                                  avatarId: entry.key,
+                                  size: 48,
+                                ),
+                              ),
+                            ),
+                            if (entry.key == selected)
+                              const Positioned(
+                                right: -1,
+                                bottom: -1,
+                                child: Icon(
+                                  LucideIcons.circleCheck,
+                                  size: 17,
+                                  color: _accent,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: _save, child: const Text('保存')),
+    ],
+  );
+}
+
 class _OwnDevicesSettings extends StatelessWidget {
   const _OwnDevicesSettings({required this.controller});
 
@@ -3622,32 +3794,39 @@ class _Avatar extends StatelessWidget {
     required this.label,
     required this.group,
     required this.online,
+    required this.deviceId,
+    this.avatarId,
   });
 
   final String label;
   final bool group;
   final bool online;
+  final String deviceId;
+  final String? avatarId;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        CircleAvatar(
-          radius: 19,
-          backgroundColor: group
-              ? const Color(0xFFD8E5F2)
-              : const Color(0xFFE7E0F2),
-          foregroundColor: group
-              ? const Color(0xFF2E5D82)
-              : const Color(0xFF604782),
-          child: group
-              ? const Icon(LucideIcons.users, size: 18)
-              : Text(
-                  label.characters.first,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-        ),
+        if (!group)
+          DeviceAvatar(deviceId: deviceId, avatarId: avatarId)
+        else
+          CircleAvatar(
+            radius: 19,
+            backgroundColor: group
+                ? const Color(0xFFD8E5F2)
+                : const Color(0xFFE7E0F2),
+            foregroundColor: group
+                ? const Color(0xFF2E5D82)
+                : const Color(0xFF604782),
+            child: group
+                ? const Icon(LucideIcons.users, size: 18)
+                : Text(
+                    label.characters.first,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+          ),
         if (online)
           Positioned(
             right: -1,
@@ -3663,31 +3842,6 @@ class _Avatar extends StatelessWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _DeviceIcon extends StatelessWidget {
-  const _DeviceIcon({required this.platform});
-
-  final DevicePlatform platform;
-
-  @override
-  Widget build(BuildContext context) {
-    final android = platform == DevicePlatform.android;
-    return Container(
-      width: 38,
-      height: 38,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: android ? const Color(0xFFE4F2E8) : const Color(0xFFE3ECF7),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(
-        android ? LucideIcons.smartphone : LucideIcons.monitor,
-        size: 19,
-        color: android ? const Color(0xFF347451) : const Color(0xFF3E648B),
-      ),
     );
   }
 }

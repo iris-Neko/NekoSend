@@ -43,7 +43,7 @@ UUIDv7 只用于唯一性和大致时间排序；业务顺序仍以数据库接�
 ### 平台与关系
 
 ```text
-Platform         = windows | android | linux
+Platform         = windows | android | linux | macos
 PeerRelation     = nearby | known | own_device
 Presence         = offline | online
 ReceivePolicy    = auto_accept | ask_every_time
@@ -149,7 +149,7 @@ PRAGMA temp_store = MEMORY;
 
 ## SQLite DDL（当前 Schema Version 3）
 
-以下 SQL 是当前 Schema V4 权威结构。实现时拆成 V1、V2、V3、V4 迁移文件，最终语义和约束必须保持一致。V4 扩展 Linux 平台；重建平台表时保留设备身份、绑定和待发送记录，并在恢复外键检查前验证引用完整性。
+以下 SQL 是当前 Schema V6 权威结构。实现时拆成 V1 至 V6 迁移文件，最终语义和约束必须保持一致。V4 扩展 Linux 平台；V5 新增头像缓存；V6 扩展 macOS 平台，保留设备身份、绑定、群和消息记录。升级后不允许用只支持旧 Schema 的客户端打开该数据库。
 
 ```sql
 CREATE TABLE schema_meta (
@@ -157,13 +157,13 @@ CREATE TABLE schema_meta (
     value TEXT NOT NULL
 ) STRICT;
 
-INSERT INTO schema_meta(key, value) VALUES ('schema_version', '4');
+INSERT INTO schema_meta(key, value) VALUES ('schema_version', '6');
 
 CREATE TABLE "local_profile" (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
     device_id TEXT NOT NULL UNIQUE,
     device_name TEXT NOT NULL CHECK (length(device_name) BETWEEN 1 AND 32),
-    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'linux')),
+    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'linux', 'macos')),
     group_sequence INTEGER NOT NULL DEFAULT 0 CHECK (group_sequence >= 0),
     clipboard_sequence INTEGER NOT NULL DEFAULT 0 CHECK (clipboard_sequence >= 0),
     created_at_ms INTEGER NOT NULL,
@@ -188,7 +188,7 @@ CREATE TABLE app_settings (
 CREATE TABLE "peers" (
     device_id TEXT PRIMARY KEY,
     device_name TEXT NOT NULL CHECK (length(device_name) BETWEEN 1 AND 32),
-    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'linux')),
+    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'linux', 'macos')),
     relation TEXT NOT NULL DEFAULT 'nearby'
         CHECK (relation IN ('nearby', 'known', 'own_device')),
     receive_policy_override TEXT
@@ -202,6 +202,15 @@ CREATE TABLE "peers" (
 
 CREATE INDEX idx_peers_last_seen ON peers(last_seen_at_ms DESC);
 CREATE INDEX idx_peers_relation ON peers(relation);
+
+CREATE TABLE device_avatars (
+    device_id TEXT PRIMARY KEY,
+    avatar_id TEXT NOT NULL CHECK (avatar_id IN (
+        'cat', 'dog', 'rabbit', 'bird', 'fish', 'bot',
+        'rocket', 'flower', 'mountain', 'coffee', 'moon', 'sun'
+    )),
+    updated_at_ms INTEGER NOT NULL
+) STRICT;
 
 CREATE TABLE own_device_bindings (
     peer_device_id TEXT PRIMARY KEY REFERENCES peers(device_id) ON DELETE CASCADE,
@@ -425,6 +434,14 @@ SQLite 不能用简单 CHECK 保证“每群恰好一个 owner”，因此 `Grou
 5. 更新 groups 和 group_members 后再提交。
 
 `messages.total_size`、`transfers.total_size`、`transfers.persisted_bytes` 只统计 file entry 的字节；directory entry 始终 size=0，不进入速度、进度和完成字节数计算。`entry_count` 同时统计 file 与 directory。
+
+### 设备头像与昵称资料
+
+- `device_avatars` 同时缓存本机和对端头像，键是稳定 `device_id`；昵称分别读取 `local_profile.device_name` 和 `peers.device_name`，不再从当前在线列表猜测群消息发送者。历史消息保留原 `sender_device_id`，显示时关联当前已保存资料。
+- `avatar_id` 只能取上述 DDL 中的 12 个内置 ID，不接受 URL、路径、图片字节或用户上传。没有缓存时，按 DeviceId 的 16 个原始字节计算：从 0 开始依次 `hash = (hash * 31 + byte) % 12`，取 DDL 允许值列表的对应项；Flutter 与 Rust 使用相同顺序与算法。
+- `list_device_identities()` 返回 `device_id`、`device_name`、`avatar_id`、`is_local`，包含持久化对端，即使其当前离线。`set_device_avatar(client_operation_id, avatar_id)` 只修改本机头像，走现有 client operation 事务幂等机制，非法 ID 返回 `INVALID_ARGUMENT`，不改变旧选择。
+- 本机保存头像后发出 `PeerPresenceChanged`，发现服务下一轮 announce 读取新头像，不为换头像重启数据传输。接收端缓存头像变化后发布同类事件，Flutter 局部刷新身份资料和消息显示。头像缓存不存在或遇到未来未知 ID 时使用稳定默认图案，不崩溃、不发起外网请求。
+- 对端不能通过头像缓存接口修改本机头像。旧客户端缺少头像字段或传入未知字段值时，不删除已有有效缓存；设备名称和身份仍沿用正常的发现/握手流程。
 
 ## 数据保留与清理
 

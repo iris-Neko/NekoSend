@@ -126,6 +126,8 @@ struct AnnouncePacket {
     packet_type: String,
     device_id: DeviceId,
     device_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    avatar_id: Option<String>,
     platform: Platform,
     app_version: String,
     protocol_min: u16,
@@ -151,7 +153,7 @@ fn run_loop(
     peers: Arc<Mutex<HashMap<DeviceId, PeerEntry>>>,
     stop: Arc<AtomicBool>,
 ) {
-    let announce = announce_bytes(&profile);
+    let mut announce = announce_with_avatar(&profile, &storage);
     send_discover(&socket, profile.device_id);
     send_broadcast(&socket, &announce);
     let mut last_announce = Instant::now();
@@ -159,6 +161,7 @@ fn run_loop(
 
     while !stop.load(Ordering::Acquire) {
         if last_announce.elapsed() >= ANNOUNCE_INTERVAL {
+            announce = announce_with_avatar(&profile, &storage);
             send_discover(&socket, profile.device_id);
             send_broadcast(&socket, &announce);
             last_announce = Instant::now();
@@ -246,6 +249,9 @@ fn handle_packet(
                 &source_ip.to_string(),
                 seen_at_ms,
             );
+            let avatar_changed = storage
+                .store_peer_avatar(peer.device_id, packet.avatar_id.as_deref())
+                .unwrap_or(false);
             let device_id = peer.device_id;
             let changed = {
                 let mut peers = peers.lock().unwrap_or_else(|error| error.into_inner());
@@ -263,7 +269,7 @@ fn handle_packet(
                 );
                 changed
             };
-            if changed {
+            if changed || avatar_changed {
                 events::publish(
                     CoreEventKind::PeerPresenceChanged,
                     Some(device_id.to_string()),
@@ -316,6 +322,7 @@ fn announce_bytes(profile: &LocalProfile) -> Vec<u8> {
         packet_type: "announce".to_owned(),
         device_id: profile.device_id,
         device_name: profile.device_name.clone(),
+        avatar_id: Some(crate::storage::default_avatar_id(profile.device_id).to_owned()),
         platform: profile.platform,
         app_version: CORE_VERSION.to_owned(),
         protocol_min: PROTOCOL_VERSION,
@@ -330,6 +337,13 @@ fn announce_bytes(profile: &LocalProfile) -> Vec<u8> {
         sent_at_ms: unix_time_ms(),
     })
     .expect("the fixed announce packet is serializable")
+}
+
+fn announce_with_avatar(profile: &LocalProfile, storage: &Storage) -> Vec<u8> {
+    let mut packet: AnnouncePacket = serde_json::from_slice(&announce_bytes(profile))
+        .expect("locally serialized announce must be valid");
+    packet.avatar_id = storage.avatar_id(profile.device_id).ok();
+    serde_json::to_vec(&packet).expect("announce with built-in avatar is serializable")
 }
 
 fn send_broadcast(socket: &UdpSocket, bytes: &[u8]) {
@@ -397,6 +411,81 @@ mod tests {
         assert_eq!(packet.protocol_min, PROTOCOL_VERSION);
         assert_eq!(packet.protocol_max, PROTOCOL_VERSION);
         assert_eq!(packet.tcp_port, 53_318);
+    }
+
+    #[test]
+    fn avatar_changes_are_announced_and_cached_without_overwriting_old_client_data() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut local_store = Storage::open(temp.path().join("local.db")).unwrap();
+        let local = local_store
+            .load_or_create_profile("PC", Platform::Windows)
+            .unwrap();
+        let mut remote_store = Storage::open(temp.path().join("remote.db")).unwrap();
+        let remote = remote_store
+            .load_or_create_profile("Phone", Platform::Android)
+            .unwrap();
+        remote_store
+            .set_local_avatar(
+                crate::domain::ClientOperationId::generate(),
+                remote.device_id,
+                "rocket",
+            )
+            .unwrap();
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let peers = Mutex::new(HashMap::new());
+        let packet = announce_with_avatar(&remote, &remote_store);
+        assert!(packet.len() <= MAX_DISCOVERY_PACKET_BYTES);
+        let source = SocketAddr::from((Ipv4Addr::LOCALHOST, 12345));
+        handle_packet(
+            &socket,
+            &local_store,
+            &local,
+            &peers,
+            &announce_with_avatar(&local, &local_store),
+            &packet,
+            source,
+        );
+        assert_eq!(local_store.avatar_id(remote.device_id).unwrap(), "rocket");
+        remote_store
+            .set_local_avatar(
+                crate::domain::ClientOperationId::generate(),
+                remote.device_id,
+                "moon",
+            )
+            .unwrap();
+        handle_packet(
+            &socket,
+            &local_store,
+            &local,
+            &peers,
+            &[],
+            &announce_with_avatar(&remote, &remote_store),
+            source,
+        );
+        assert_eq!(local_store.avatar_id(remote.device_id).unwrap(), "moon");
+        let mut old_packet: serde_json::Value = serde_json::from_slice(&packet).unwrap();
+        old_packet.as_object_mut().unwrap().remove("avatar_id");
+        handle_packet(
+            &socket,
+            &local_store,
+            &local,
+            &peers,
+            &[],
+            &serde_json::to_vec(&old_packet).unwrap(),
+            source,
+        );
+        assert_eq!(local_store.avatar_id(remote.device_id).unwrap(), "moon");
+        expire_offline_peers(&peers);
+        assert_eq!(
+            local_store
+                .list_device_identities()
+                .unwrap()
+                .iter()
+                .find(|item| item.device_id == remote.device_id.to_string())
+                .unwrap()
+                .device_name,
+            "Phone"
+        );
     }
 
     #[test]

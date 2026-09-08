@@ -11,7 +11,8 @@ macro_rules! string_enum {
 string_enum!(Platform {
     Windows,
     Android,
-    Linux
+    Linux,
+    Macos
 });
 string_enum!(PeerRelation {
     Nearby,

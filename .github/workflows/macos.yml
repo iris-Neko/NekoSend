@@ -1,0 +1,46 @@
+name: macOS Package
+
+on:
+  push:
+    branches: [codex/macos-package]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - name: Core tests
+        run: cargo test --workspace
+      - name: Flutter checks
+        working-directory: app_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze
+          flutter test
+      - name: Build macOS
+        working-directory: app_flutter
+        run: flutter build macos --release
+      - name: Package and verify
+        run: bash packaging/macos/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekoSend-macos-universal-unsigned
+          path: dist/macos/*
+          if-no-files-found: error

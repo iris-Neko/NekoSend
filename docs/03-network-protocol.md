@@ -103,7 +103,8 @@ V1 只支持：
 约束：
 
 - `device_name`：1-32 个 Unicode 字符，UTF-8 最多 128 字节。
-- `platform`：`windows`、`android` 或 `linux`。Linux 标识从应用 0.2.0 起支持；旧客户端会忽略无法解析的平台值，跨 Linux 通信要求各端更新到 0.2.0 或以上。帧格式和协议版本仍为 1。
+- `avatar_id`：announce、hello、hello_ack 的可选字符串字段，取值与默认算法见 [头像资料](04-data-and-api.md#设备头像与昵称资料)。发送端只发送内置图案 ID，接收端忽略未知值；缺失字段兼容旧客户端并保留此前缓存。它不改变帧格式、协议版本或文件数据路径。
+- `platform`：`windows`、`android`、`linux` 或 `macos`。Linux 标识从应用 0.2.0 起支持，macOS 从 0.3.0 起支持；旧客户端会忽略无法解析的平台值，跨 macOS 通信要求各端更新到 0.3.0 或以上。帧格式和协议版本仍为 1。
 - `tcp_port`：V1 必须为 53318。
 - `capabilities`：未知值忽略；缺少某能力时 UI 禁用对应入口。
 - 来源 IP 以 UDP 数据报真实来源为准，不接受 JSON 中提供 IP。

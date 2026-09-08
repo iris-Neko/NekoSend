@@ -28,6 +28,54 @@ pub fn subscribe_core_events(sink: StreamSink<CoreEventDto>) {
 
 static CORE_RUNTIME: Mutex<Option<CoreRuntime>> = Mutex::new(None);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceIdentityDto {
+    pub device_id: String,
+    pub device_name: String,
+    pub avatar_id: String,
+    pub is_local: bool,
+}
+
+#[frb(sync)]
+pub fn list_device_identities() -> Result<Vec<DeviceIdentityDto>, String> {
+    with_runtime(|runtime| {
+        Storage::open(&runtime.database_path)
+            .map_err(|e| e.to_string())?
+            .list_device_identities()
+            .map_err(|e| e.to_string())
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| DeviceIdentityDto {
+                        device_id: row.device_id,
+                        device_name: row.device_name,
+                        avatar_id: row.avatar_id,
+                        is_local: row.is_local,
+                    })
+                    .collect()
+            })
+    })
+}
+
+#[frb(sync)]
+pub fn set_device_avatar(client_operation_id: String, avatar_id: String) -> Result<String, String> {
+    let result = with_runtime(|runtime| {
+        Storage::open(&runtime.database_path)
+            .map_err(|e| e.to_string())?
+            .set_local_avatar(
+                client_operation_id
+                    .parse()
+                    .map_err(|e: crate::domain::IdParseError| e.to_string())?,
+                runtime.profile.device_id,
+                &avatar_id,
+            )
+            .map_err(|e| e.to_string())
+    });
+    if result.is_ok() {
+        events::publish(crate::events::CoreEventKind::PeerPresenceChanged, None);
+    }
+    result
+}
+
 struct CoreRuntime {
     profile: LocalProfile,
     database_path: String,
@@ -1827,7 +1875,8 @@ fn parse_platform(value: &str) -> Result<Platform, String> {
         "windows" => Ok(Platform::Windows),
         "android" => Ok(Platform::Android),
         "linux" => Ok(Platform::Linux),
-        _ => Err("platform must be windows or android".to_owned()),
+        "macos" => Ok(Platform::Macos),
+        _ => Err("platform must be windows, android, linux, or macos".to_owned()),
     }
 }
 
@@ -1846,12 +1895,23 @@ fn platform_name(platform: Platform) -> &'static str {
         Platform::Windows => "windows",
         Platform::Android => "android",
         Platform::Linux => "linux",
+        Platform::Macos => "macos",
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macos_platform_has_its_own_api_value() {
+        assert_eq!(parse_platform("macos").unwrap(), Platform::Macos);
+        assert_eq!(platform_name(Platform::Macos), "macos");
+        assert_eq!(
+            serde_json::to_string(&Platform::Macos).unwrap(),
+            "\"macos\""
+        );
+    }
 
     #[test]
     fn core_errors_have_stable_codes_and_user_messages() {
