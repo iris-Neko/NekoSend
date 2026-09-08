@@ -85,6 +85,15 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def verify_android_certificate(report, expected):
+    # New apksigner versions label v3 signers by SDK range instead of "#1".
+    fingerprints = {value.lower() for value in re.findall(
+        r"(?m)^Signer [^\r\n]* certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$", report)}
+    expected = expected.lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected) or fingerprints != {expected} or "android debug" in report.lower():
+        raise ValueError(f"APK release certificate mismatch: expected {expected}, found {sorted(fingerprints)}")
+
+
 def collect(args):
     output = Path("release-output")
     output.mkdir(exist_ok=True)
@@ -105,10 +114,8 @@ def collect(args):
             if "lib/arm64-v8a/liblan_chat_core.so" not in archive.namelist():
                 raise ValueError("Android APK is missing its Rust core")
         report = Path(args.certificate_report).read_text(encoding="utf-8")
-        match = re.search(r"Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)", report)
-        expected = os.environ.get("ANDROID_SIGNING_CERT_SHA256", "").lower()
-        if not expected or not match or match[1].lower() != expected or "Android Debug" in report:
-            raise ValueError("APK signing certificate differs from the configured release identity")
+        print(report)
+        verify_android_certificate(report, os.environ.get("ANDROID_SIGNING_CERT_SHA256", ""))
         shutil.copy2(apk, output / PACKAGES[platform][0])
         (output / PACKAGES[platform][1]).write_text(report + "\n", encoding="utf-8")
     elif platform == "linux":
