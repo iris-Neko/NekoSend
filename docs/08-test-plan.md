@@ -122,6 +122,44 @@ flutter test app_flutter
 - Android 后台通知剪贴板链路已自动化验收：原生通知包含“发送剪贴板”动作并路由到带 `send_clipboard` 参数的 MainActivity；Flutter 收到前台动作后读取剪贴板、显示预览，只有点击“发送”才调用 `submitLocalClipboardText(..., automatic=false)`。Widget 39/39 和通知定向 instrumentation 2/2 通过；锁屏时系统仍要求先解锁，不把剪贴板内容显示在锁屏上。
 - 2026-08-28 最终锁屏回归：API 34 真机保持 `mWakefulness=Dozing`，前台服务为 `isForeground=true`；Android 通过本次构建发送 `message_id=01a04465-60df-74b3-88fa-1dfd71c45de9`，Windows 从 `10.1.1.161:42164 -> 10.1.1.203:53318` 接收。两端消息均为 `delivered`，相关 outbox 为 0，Windows SQLite `quick_check=ok`。
 
+### 补充回归与设备状态（2026-09-08）
+
+下述真机联调阶段没有修改应用源码，实机复用 2026-08-28 的 Windows Debug 和 Android ARM64 Debug 构建；应用文件 SHA-256、完整命令输出和逐步接口响应保存在本机忽略目录 `.e2e-data/20260908/`。以下只记录实际执行的范围，不将历史结果或尚未执行的设备组合计作本轮通过；后续 Windows 回车修复单独记录。
+
+- Rust workspace 85 项、Flutter 39 项重新执行全部通过；`cargo fmt --all --check`、`cargo clippy --workspace --all-targets --locked -- -D warnings` 和 `flutter analyze` 均通过。
+- Android 14 真机 `M2012K11G` 的现有 instrumentation APK 本轮报告 16 项：15 项通过、SFTP 基准因未配置参数跳过 1 项，没有失败；这里按实际运行器数量记录，不沿用上方历史计数。
+- Windows 与 Android 14 双向文字送达，双方按同一 MessageId 各只有一条记录。Android 进程停止后，文字 `01a0802c-7605-7f32-bb07-4708b27b0551` 和 32MiB 文件任务 `01a0802c-7695-7233-9901-69ce35d7b76f` 均排队；Windows 进程重启后记录与 DeviceId 保持，Android 再启动后自动送达且无重复。
+- 32MiB 文件完成 Windows -> Android -> Windows 往返，三份 SHA-256 均为 `f3429d993edf24504473174d0ba9c8f61b0c274ee8fd0dc689ac6ae321ab2d30`。重复发送产生递增名称，原文件未覆盖；嵌套文件、根目录及两处空目录的结构和内容均核对通过。Android 接收使用 Debug SAF Provider；反向发送使用应用私有文件路径，不将其记为系统 DocumentsUI 或真实 SAF 发送授权的新增验收。
+- 1GiB 任务 `01a0802e-4658-7003-bc2c-2db714e07552` 在 `197132288` bytes 处暂停；接收端进程重启后仍为 paused 且偏移保持。恢复后两端 completed，源与目标 SHA-256 均为 `fdff14a94c824824f9fdb73779ec2071ab12eb50312f5a33554bd89e757c1cbc`。该测试是恢复正确性回归，不是三轮性能计分；校验后已清理两端这份 1GiB 临时文件。
+- 锁屏发送、接收分别使用消息 `01a0802f-b33e-7c62-926c-bfe77118d72e`、`01a0802f-b325-7ec1-8d68-79b39883486a`；两端 delivered 且各入库一次，调用前后 Android 均为 Dozing，前台服务为 `isForeground=true`。
+- 第二台真机 `23127PN0CC` 为 Android 16 / API 36，与第一台同属小米。初次 APK 安装返回 `INSTALL_FAILED_USER_RESTRICTED`；随后确认实际阻塞在安全中心的单次安装确认，用户确认后主应用安装成功，不能继续归因为 USB 开关未开启。三台实体设备已通过同网段互相发现，Android 16 与另两端的双向私聊也已送达且各只入库一次。独立 instrumentation APK 的安装确认仍被取消，本轮没有运行 Android 16 instrumentation。
+- 三实体节点功能场景使用 Windows、Android 14、Android 16 和独立测试群 `g:d_1e582934a1bcc579652eeb924b314106:2`。Android 16 离线时创建群，Android 14 先接受邀请；Android 16 重新上线补收并接受后，三端均为 revision 3、三名 joined 成员。此处是 `E2E-003` 的一 Windows 加两 Android 功能组合，不替代其原定双 Windows 组合或不同厂商矩阵。
+- Windows 群主进程退出后，两台手机直接交换群文字 `01a0803a-77f5-7031-a2d3-7ec5dcc6465d`、`01a0803a-784b-7721-9bd2-9343ab48de2a`，发送端为 partially_delivered、另一手机在线副本为 delivered。两台手机还双向发送 32MiB 群文件，MessageId 为 `01a0803b-05dc-7352-90fe-f5005a343e13`、`01a0803b-13ca-7083-849a-73d284c52d5b`；每个发送端各有两个独立任务，手机目标 completed，离线 Windows 目标 queued。两台手机随后重启，离线目标队列仍保留。Windows 再启动后补收全部文字和文件，三端上述四个 MessageId 各只有一条且均 delivered；两部手机和 Windows 接收文件 SHA-256 均与上述 32MiB 源文件一致。
+- 群主转让给 Android 16 后三端 revision 4；原群主的改名命令被拒绝。新群主改名后 revision 5，再移除 Android 14 后 revision 6；被移除端禁止继续发言，原历史保留。三端进程重启后，最终仍为 revision 6、同一群名和 Android 16 群主，被移除成员仍为 removed；四条已验收群消息各保留一条。Android 16 的最后复核在下述冻结恢复后完成，不将其计作无干预的后台通过证据。
+- **未通过：Android 16 锁屏后台可用性。** 进程重启后手机处于 Dozing，应用前台服务仍为 `isForeground=true`，系统 DeviceIdle 为 ACTIVE 且正在充电，但 PID `15373` 的 `cgroup.freeze=1`、`cgroup.events` 为 `frozen 1`。原生 Dart VM 的 `getVM` 无响应，其他设备也不再发现该手机。再次执行 `am start` 激活 MainActivity 后，同一进程的 `cgroup.freeze` 变为 0，未重装、未重启进程即可读取完整群资料并恢复接口响应；当时屏幕仍报告 Dozing。证据保存在 `android16-freeze-evidence.log` 和 `live-evidence.jsonl`。这证明本次阻塞涉及设备进程冻结，不足以确定具体冻结发起方；未修改该手机的省电或冻结策略，问题仍需定位和回归，不能签署完整后台或发布验收。
+- 两台同厂商手机不能替代不同厂商 Android 的验收要求。Linux 辅助机 SSH 与到手机的 TCP 连通性已确认，没有把 Linux 计作受支持客户端。测试后已恢复三端原先的默认接收目录；未清除原有聊天数据库、会话或历史任务，仅新增独立测试群和测试消息，并清理本轮明确创建的 1GiB 大文件。
+
+### Windows 回车发送修复（2026-09-08）
+
+修复桌面多行输入框只监听提交动作、未处理实体回车的问题：Windows 两栏和窄窗口单栏都支持普通回车及小键盘回车发送，Shift+Enter 交由原生输入处理换行。组合输入中的回车保留给输入法，长按不重复发送，发送失败保留草稿，成功后保持输入焦点。Android 保持原有硬件按键和软键盘提交行为。新增 6 项真实按键及平台输入模拟测试，全套 Flutter 45/45 通过，`flutter analyze` 无问题，Windows Debug/Release 均构建成功；确认无未发送草稿和活动传输后，正常重启了 Windows Debug 客户端以验证新的启动文件。原生输入法候选窗口的人工验证不等同于 Widget 中的组合输入模拟。
+
+### 自定义设备名称与可读默认名（2026-09-08）
+
+- 设置页支持点击设备名称整行修改，Windows 弹窗保存后立即刷新；取消不写入，空名称、超长 Unicode 名称和控制字符被校验，后端失败保留草稿。修正已有私聊标题读取，使其采用最新持久化对端名称而非旧标题缓存；改名的校验与落库先于网络服务重启，非法名称不会先停止发现。
+- Android 首选系统可读机型，并对旧默认型号代码做一次性兼容升级。两台真机已分别由 `M2012K11G`、`23127PN0CC` 升级为系统返回的 `Mi 11i`、`Xiaomi 14`；Windows 和另一台手机的附近列表及已有私聊标题均同步更新，原 DeviceId 保持不变。
+- 实机验证：完成兼容升级后，主动把 Android 14 名称设回 `M2012K11G`，重启后仍保留该自定义值；Android 16 自定义中文名同步到 Windows，重启后同样保留。测试后分别恢复为 `Mi 11i`、`Xiaomi 14`，没有修改系统设备名称或账号信息。33 字符的非法改名被拒绝，原名称与运行中的发现服务保持可用。
+- Rust workspace 86/86、Flutter 51/51、Android JVM 7/7 通过；Clippy 与 Flutter analyze 通过，Android ARM64 Debug 和 Windows Debug/Release 构建成功。两部手机已覆盖安装新包，Windows 已在确认无未完成输入和活动传输后正常重启更新。此处 JVM 测试不替代先前尚未执行的 Android 16 instrumentation。
+
+### Android 返回导航与 Linux Flatpak（0.2.0，2026-09-08）
+
+- Android 系统返回使用 PopScope：聊天/传输详情回原列表，附近/设置回会话首页，首页返回只 moveTaskToBack，不关闭 Rust 核心；键盘与弹窗优先消费返回。返回导航、键盘草稿保留和弹窗优先级已通过 Widget 测试；两台手机主应用已覆盖安装，K40 instrumentation 15 项通过、1 项 SFTP 基准跳过。Android 16 测试组件安装确认仍被取消，未把该套 instrumentation 算作通过。
+- 新增 Linux 平台标识和 Schema V4。Windows 本地 Rust workspace 90/90、Flutter 58/58 通过；迁移测试验证 V3 身份、绑定、会话和永久 outbox 保留，非法旧外键导致整个 V4 迁移回滚。Windows Debug/Release、Android ARM64 Debug 均成功构建，Android JVM 7/7 通过。
+- Linux 使用 Fedora 44 KDE/Wayland 实体桌面，在 GNOME 50 SDK 内从源码构建 0.2.0 Release Flatpak，并实际以用户安装运行。桌面窗口、中文 UI、单实例和 StatusNotifier 托盘均已检查；不是 perf_harness 或只读 TCP 探测。运行权限与 manifest 一致，不包含任意主目录或宿主命令权限。
+- 实际安装包被 Windows 和 Android 发现为 linux，设备 ID 为 `d_63db25908316dc2ab4fbd71846a1d466`。Windows -> Linux 消息 `01a080df-9898-7fe2-9b09-213f92f27a71` 已送达；Linux Release 窗口内真实键盘回车发送的消息 `01a080e0-ec1d-75a0-b85b-76c31a047950` 在 Windows 恰好一条且 delivered。
+- 32MiB 文件通过 Windows -> Linux -> Windows 完整往返，Linux 的首次接收目录和发送源均通过实际 KDE 文件门户选择。正向任务 `01a080e1-6565-7af2-b948-49510c535987` 和反向任务 `01a080e9-0cfb-7901-9ab9-53f2aa2c9913` 均 completed；三份 SHA-256 为 `f3429d993edf24504473174d0ba9c8f61b0c274ee8fd0dc689ac6ae321ab2d30`。Windows 临时接收目录已恢复，Linux 测试文件限定在 Downloads/NekoSend/Flatpak-Test。
+- Wayland 显示在真实 KDE 桌面检查，键盘自动化另在隔离 X11 显示器上操作同一 Release 包；文件门户仍走实际 KDE。结束后切回真实桌面，未使用调试扩展作为 Linux 发布包验收证据。测试截图和日志位于本机忽略目录，未作为用户数据提交 Git。
+- 本轮不等同于完整 V1 发布签署：Android 16 锁屏冻结、不同厂商 Android 与双 Windows 矩阵、生产 Android 签名、提升权限安装/防火墙验收和 DOC-008 仍按原记录保留；Linux 的多发行版、开机启动授权及不同 Wayland 剪贴板策略仍有兼容性风险。
+
 ## ID、枚举和状态单元测试
 
 | ID | 场景 | 期望 |
@@ -155,6 +193,7 @@ flutter test app_flutter
 | `DB-010` | completed 提交前文件发布失败 | transfer 不得为 completed |
 | `DB-011` | 删除会话 | 取消未完成任务，接收目录文件仍存在 |
 | `DB-012` | 群快照无 owner/双 owner/33 人 | 事务拒绝并保持旧 revision |
+| `DB-013` | 对端改名与数据库重开 | 已有私聊采用最新持久化设备名称，设备 ID 和会话记录不变 |
 
 DDL 测试必须在真正 SQLite 上运行，不用内存 Map 模拟约束。
 
@@ -297,6 +336,8 @@ DDL 测试必须在真正 SQLite 上运行，不用内存 Map 模拟约束。
 | `UI-010` | 最长设备名/群名/错误文案 | 控件不溢出，必要时换行 |
 | `UI-011` | Windows 640px 单栏后恢复到 800px | 列表/聊天返回正确，恢复两栏后保留会话和滚动位置 |
 | `UI-012` | 左栏会话/附近 Tab、搜索、设置和传输入口 | 入口无重复导航，切换后列表和右栏行为符合产品文档 |
+| `UI-013` | Windows 发送快捷键与输入法 | 普通/小键盘回车发送且保留焦点，Shift+Enter 换行；组合输入不误发、长按不重复、失败保留草稿，Android 行为不变 |
+| `UI-014` | 修改本机名称 | 整行可编辑，保存立即刷新；取消不修改，无效输入被拒绝，失败保留草稿 |
 
 Widget 测试使用权威 DTO 枚举构造假数据，不复制状态机到测试 helper。
 
@@ -333,6 +374,7 @@ Widget 测试使用权威 DTO 枚举构造假数据，不复制状态机到测�
 | `AND-013` | 接收自动剪贴板 | 允许时写系统剪贴板并抑制回环 |
 | `AND-014` | 本地 Provider 10GB 文件 | 内容正确，数据不经过 Dart |
 | `AND-015` | 发送/接收含空子目录的 Tree URI | directory entry 保留且不创建数据段 |
+| `AND-016` | 可读默认名称及旧默认名升级 | 按平台回退规则取名，只做一次旧默认值检查，自定义名称在重启后保留 |
 
 ## 故障注入测试
 
@@ -445,9 +487,9 @@ Widget 测试使用权威 DTO 枚举构造假数据，不复制状态机到测�
 | RQ-008 | binding API/messages | CLIP-01 | IT-CLIP-001..004 |
 | RQ-009 | ClipboardMode/PlatformRequest | CLIP-02..03 | IT-CLIP-005..010, AND-010..013 |
 | RQ-010 | data socket/buffer/scheduler | PERF-01..02, QA-02 | PERF-001..010 |
-| RQ-011 | schema/outbox/processed events | CORE-02, DB-01..02, FILE-04 | DB-001..012, FI-001..009 |
-| RQ-012 | PlatformAdapter | WIN-01, AND-01..03 | WIN-001..009, AND-001..015 |
-| RQ-013 | Core DTO/ViewModel | UI-01..02 | UI-001..012, E2E-001..005 |
+| RQ-011 | schema/outbox/processed events | CORE-02, DB-01..02, FILE-04 | DB-001..013, FI-001..009 |
+| RQ-012 | PlatformAdapter | WIN-01, AND-01..03 | WIN-001..009, AND-001..016 |
+| RQ-013 | Core DTO/ViewModel | UI-01..02 | UI-001..014, E2E-001..005 |
 
 任何新需求必须先获得新 `RQ-` ID，并同时更新产品文档、实施任务和测试，不允许只有 UI 或只有协议改动。
 

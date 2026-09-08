@@ -26,6 +26,7 @@ import io.flutter.plugins.GeneratedPluginRegistrant
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 
 open class MainActivity : FlutterActivity() {
     private var pendingPickerResult: MethodChannel.Result? = null
@@ -227,6 +228,10 @@ open class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "getDefaultReceiveDirectory" -> result.success(null)
+                "moveToBackground" -> {
+                    moveTaskToBack(true)
+                    result.success(null)
+                }
                 "openReference" -> {
                     try {
                         openReference(
@@ -250,12 +255,22 @@ open class MainActivity : FlutterActivity() {
                     )
                     result.success(null)
                 }
-                "getBootstrapInfo" -> result.success(
-                    mapOf(
+                "getBootstrapInfo" -> runPlatformOperation(result) {
+                    val preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+                    mutableMapOf(
                         "dataDirectory" to filesDir.absolutePath,
-                        "deviceName" to Build.MODEL,
-                    ),
-                )
+                        "deviceName" to defaultDeviceName(),
+                    ).apply {
+                        if (!preferences.getBoolean(DEVICE_NAME_MIGRATED, false)) {
+                            put("legacyDeviceName", Build.MODEL)
+                        }
+                    }
+                }
+                "completeDeviceNameMigration" -> {
+                    getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
+                        .putBoolean(DEVICE_NAME_MIGRATED, true).apply()
+                    result.success(null)
+                }
                 "pickSource" -> launchSourcePicker(call.argument<String>("kind"), result)
                 "readClipboardImage" -> runPlatformOperation(result) {
                     readClipboardImage()
@@ -569,6 +584,39 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun defaultDeviceName(): String {
+        val marketNames = listOf(
+            "ro.product.marketname",
+            "ro.product.vendor.marketname",
+            "ro.product.odm.marketname",
+        ).map(::readDeviceProperty)
+        val systemName = try {
+            Settings.Global.getString(contentResolver, "device_name")
+        } catch (_: SecurityException) {
+            null
+        }
+        return DeviceNamePolicy.chooseDefaultName(Build.MODEL, marketNames, systemName)
+    }
+
+    private fun readDeviceProperty(name: String): String {
+        val process = try {
+            ProcessBuilder("/system/bin/getprop", name).start()
+        } catch (_: Exception) {
+            return ""
+        }
+        return try {
+            if (process.waitFor(250, TimeUnit.MILLISECONDS) && process.exitValue() == 0) {
+                process.inputStream.bufferedReader().use { it.readText().trim() }
+            } else {
+                ""
+            }
+        } catch (_: Exception) {
+            ""
+        } finally {
+            process.destroy()
+        }
+    }
+
     private fun runPlatformOperation(
         result: MethodChannel.Result,
         operation: () -> Any?,
@@ -600,6 +648,7 @@ open class MainActivity : FlutterActivity() {
         private const val MAX_CLIPBOARD_IMAGE_BYTES = 20L * 1024L * 1024L
         internal const val PREFERENCES = "lan_chat_platform"
         private const val SAVED_RECEIVE_TREE = "saved_receive_tree"
+        private const val DEVICE_NAME_MIGRATED = "readable_device_name_migrated"
         internal const val KEEP_ONLINE = "keep_online"
         private const val NOTIFICATIONS_ENABLED = "notifications_enabled"
         private const val NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"

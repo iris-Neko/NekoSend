@@ -8,7 +8,11 @@ macro_rules! string_enum {
     };
 }
 
-string_enum!(Platform { Windows, Android });
+string_enum!(Platform {
+    Windows,
+    Android,
+    Linux
+});
 string_enum!(PeerRelation {
     Nearby,
     Known,

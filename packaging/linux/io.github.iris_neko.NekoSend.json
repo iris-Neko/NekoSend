@@ -1,0 +1,87 @@
+{
+  "app-id": "io.github.iris_neko.NekoSend",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "50",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": ["org.freedesktop.Sdk.Extension.llvm21"],
+  "cleanup": ["/lib/nekosend-build", "/lib/debug/lib/nekosend-build"],
+  "command": "nekosend",
+  "finish-args": [
+    "--share=network",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--filesystem=xdg-download/NekoSend:create",
+    "--talk-name=org.kde.StatusNotifierWatcher",
+    "--env=GTK_USE_PORTAL=1"
+  ],
+  "modules": [
+    {
+      "name": "rust-toolchain",
+      "buildsystem": "simple",
+      "build-options": {
+        "no-debuginfo": true,
+        "no-debuginfo-compression": true,
+        "strip": false,
+        "build-args": ["--share=network"],
+        "env": {
+          "HOME": "/app/lib/nekosend-build/home",
+          "CARGO_HOME": "/app/lib/nekosend-build/home/.cargo",
+          "RUSTUP_HOME": "/app/lib/nekosend-build/home/.rustup"
+        }
+      },
+      "build-commands": [
+        "mkdir -p /app/lib/nekosend-build/home",
+        "chmod 755 rustup-init",
+        "./rustup-init -y --no-modify-path --profile minimal --default-toolchain 1.98.0 --component clippy --component rustfmt",
+        "/app/lib/nekosend-build/home/.cargo/bin/rustup target add --toolchain 1.98.0 x86_64-pc-windows-msvc aarch64-linux-android x86_64-linux-android"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-unknown-linux-gnu/rustup-init",
+          "sha256": "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71"
+        }
+      ]
+    },
+    {
+      "name": "nekosend",
+      "buildsystem": "simple",
+      "build-options": {
+        "append-path": "/app/lib/nekosend-build/home/.cargo/bin:/usr/lib/sdk/llvm21/bin",
+        "build-args": ["--share=network"],
+        "env": {
+          "CI": "true",
+          "FLUTTER_SUPPRESS_ANALYTICS": "true",
+          "HOME": "/app/lib/nekosend-build/home",
+          "PUB_CACHE": "/app/lib/nekosend-build/pub-cache",
+          "CARGO_HOME": "/app/lib/nekosend-build/home/.cargo",
+          "RUSTUP_HOME": "/app/lib/nekosend-build/home/.rustup"
+        }
+      },
+      "build-commands": ["bash packaging/linux/build-in-sdk.sh"],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.1-stable.tar.xz",
+          "sha256": "a1d8166c0309267cb7dc99f1424eecf08b86946ad3b50723c6f59945964aea45",
+          "dest": ".flutter-sdk",
+          "strip-components": 1
+        },
+        {
+          "type": "dir",
+          "path": "../..",
+          "skip": [
+            ".git", ".e2e-data", ".flatpak-builder", ".flatpak-build",
+            ".flatpak-repo", "dist", "target", ".flutter-sdk",
+            "app_flutter/.dart_tool", "app_flutter/build",
+            "app_flutter/android/.gradle", "app_flutter/android/local.properties",
+            "app_flutter/android/key.properties", "app_flutter/android/keystore",
+            "app_flutter/linux/flutter/ephemeral", "app_flutter/windows/flutter/ephemeral"
+          ]
+        }
+      ]
+    }
+  ]
+}

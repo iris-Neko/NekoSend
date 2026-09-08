@@ -439,7 +439,11 @@ class _DesktopShellState extends State<_DesktopShell> {
         builder: (context, constraints) {
           if (constraints.maxWidth < 800) {
             return widget.controller.compactDetailVisible
-                ? _MainPane(controller: widget.controller, showBackButton: true)
+                ? _MainPane(
+                    controller: widget.controller,
+                    showBackButton: true,
+                    sendOnEnter: true,
+                  )
                 : _Sidebar(
                     controller: widget.controller,
                     coreRuntime: widget.coreRuntime,
@@ -475,7 +479,10 @@ class _DesktopShellState extends State<_DesktopShell> {
               ),
               Expanded(
                 key: const ValueKey('desktop-main-pane'),
-                child: _MainPane(controller: widget.controller),
+                child: _MainPane(
+                  controller: widget.controller,
+                  sendOnEnter: true,
+                ),
               ),
             ],
           );
@@ -1100,10 +1107,15 @@ class _TransferEntry extends StatelessWidget {
 }
 
 class _MainPane extends StatelessWidget {
-  const _MainPane({required this.controller, this.showBackButton = false});
+  const _MainPane({
+    required this.controller,
+    this.showBackButton = false,
+    this.sendOnEnter = false,
+  });
 
   final AppController controller;
   final bool showBackButton;
+  final bool sendOnEnter;
 
   @override
   Widget build(BuildContext context) {
@@ -1117,6 +1129,7 @@ class _MainPane extends StatelessWidget {
         ? _ConversationPane(
             controller: controller,
             showBackButton: showBackButton,
+            sendOnEnter: sendOnEnter,
           )
         : _EmptyConversationPane(
             onBack: showBackButton ? controller.showCompactList : null,
@@ -1161,10 +1174,12 @@ class _ConversationPane extends StatefulWidget {
   const _ConversationPane({
     required this.controller,
     required this.showBackButton,
+    required this.sendOnEnter,
   });
 
   final AppController controller;
   final bool showBackButton;
+  final bool sendOnEnter;
 
   @override
   State<_ConversationPane> createState() => _ConversationPaneState();
@@ -1334,6 +1349,7 @@ class _ConversationPaneState extends State<_ConversationPane> {
               textController: textController,
               appController: widget.controller,
               onSend: _sendText,
+              sendOnEnter: widget.sendOnEnter,
             ),
           ],
         ),
@@ -2378,11 +2394,36 @@ class _Composer extends StatelessWidget {
     required this.textController,
     required this.appController,
     required this.onSend,
+    required this.sendOnEnter,
   });
 
   final TextEditingController textController;
   final AppController appController;
   final VoidCallback onSend;
+  final bool sendOnEnter;
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.enter &&
+        event.logicalKey != LogicalKeyboardKey.numpadEnter) {
+      return KeyEventResult.ignored;
+    }
+    final composing = textController.value.composing;
+    if (composing.isValid && !composing.isCollapsed) {
+      // Let the IME consume Enter without a text-editing shortcut intercepting it.
+      return KeyEventResult.skipRemainingHandlers;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    if (keyboard.isShiftPressed ||
+        keyboard.isControlPressed ||
+        keyboard.isAltPressed ||
+        keyboard.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent && textController.text.trim().isNotEmpty) {
+      onSend();
+    }
+    return KeyEventResult.handled;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2433,20 +2474,24 @@ class _Composer extends StatelessWidget {
             icon: const Icon(LucideIcons.clipboard, size: 20),
           ),
           Expanded(
-            child: TextField(
-              key: const ValueKey('message-input'),
-              controller: textController,
-              minLines: 1,
-              maxLines: keyboardVisible ? 1 : 5,
-              maxLength: 20000,
-              buildCounter: (
-                _, {
-                required currentLength,
-                required isFocused,
-                maxLength,
-              }) => null,
-              onSubmitted: (_) => onSend(),
-              decoration: const InputDecoration(hintText: '输入消息'),
+            child: Focus(
+              canRequestFocus: false,
+              onKeyEvent: sendOnEnter ? _handleKeyEvent : null,
+              child: TextField(
+                key: const ValueKey('message-input'),
+                controller: textController,
+                minLines: 1,
+                maxLines: keyboardVisible ? 1 : 5,
+                maxLength: 20000,
+                buildCounter: (
+                  _, {
+                  required currentLength,
+                  required isFocused,
+                  maxLength,
+                }) => null,
+                onSubmitted: (_) => onSend(),
+                decoration: const InputDecoration(hintText: '输入消息'),
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -3070,9 +3115,50 @@ class _MobileShell extends StatefulWidget {
 
 class _MobileShellState extends State<_MobileShell> {
   int index = 0;
+  bool _movingToBackground = false;
+
+  void _handleSystemBack(bool didPop, Object? result) {
+    if (didPop || !mounted) return;
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+      FocusScope.of(context).unfocus();
+      return;
+    }
+    if (widget.controller.compactDetailVisible) {
+      FocusScope.of(context).unfocus();
+      widget.controller.showCompactList();
+      return;
+    }
+    if (index != 0) {
+      setState(() => index = 0);
+      widget.controller.setSection(SidebarSection.conversations);
+      return;
+    }
+    unawaited(_moveToBackground());
+  }
+
+  Future<void> _moveToBackground() async {
+    if (_movingToBackground) return;
+    _movingToBackground = true;
+    try {
+      await PlatformBootstrap.moveAndroidTaskToBackground();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('暂时无法返回桌面，请重试')));
+      }
+    } finally {
+      _movingToBackground = false;
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PopScope<Object?>(
+    canPop: false,
+    onPopInvokedWithResult: _handleSystemBack,
+    child: _buildScaffold(context),
+  );
+
+  Widget _buildScaffold(BuildContext context) {
     if (widget.controller.compactDetailVisible) {
       return Scaffold(
         body: _MainPane(controller: widget.controller, showBackButton: true),
@@ -3147,10 +3233,13 @@ class _SettingsDialog extends StatelessWidget {
       content: SizedBox(
         width: 420,
         height: 560,
-        child: _SettingsContent(
-          coreRuntime: coreRuntime,
-          controller: controller,
-          isAndroid: false,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => _SettingsContent(
+            coreRuntime: coreRuntime,
+            controller: controller,
+            isAndroid: false,
+          ),
         ),
       ),
       actions: [
@@ -3183,8 +3272,10 @@ class _SettingsContent extends StatelessWidget {
     return ListView(
       children: [
         ListTile(
+          key: const ValueKey('device-name-setting'),
           title: const Text('设备名称'),
           subtitle: Text(settings.deviceName),
+          onTap: () => _renameDevice(context, settings.deviceName),
           trailing: IconButton(
             tooltip: '修改设备名称',
             onPressed: () => _renameDevice(context, settings.deviceName),
@@ -3253,7 +3344,11 @@ class _SettingsContent extends StatelessWidget {
             value: settings.closeToTray,
             onChanged: (value) =>
                 _save(context, settings.copyWith(closeToTray: value)),
-            title: const Text('关闭窗口时最小化到托盘'),
+            title: Text(
+              defaultTargetPlatform == TargetPlatform.linux
+                  ? '关闭窗口时在后台运行'
+                  : '关闭窗口时最小化到托盘',
+            ),
           ),
         ] else
           SwitchListTile(
@@ -3323,32 +3418,11 @@ class _SettingsContent extends StatelessWidget {
   }
 
   Future<void> _renameDevice(BuildContext context, String current) async {
-    final text = TextEditingController(text: current);
-    final next = await showDialog<String>(
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('修改设备名称'),
-        content: TextField(
-          controller: text,
-          autofocus: true,
-          maxLength: 32,
-          decoration: const InputDecoration(labelText: '设备名称'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, text.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      builder: (context) =>
+          _RenameDeviceDialog(controller: controller, currentName: current),
     );
-    text.dispose();
-    if (next == null || next.isEmpty || !context.mounted) return;
-    if (!controller.renameDevice(next)) _showError(context);
   }
 
   Future<void> _pickReceiveDirectory(
@@ -3381,6 +3455,78 @@ class _SettingsContent extends StatelessWidget {
       SnackBar(content: Text('设置保存失败：${controller.lastError ?? '未知错误'}')),
     );
   }
+}
+
+class _RenameDeviceDialog extends StatefulWidget {
+  const _RenameDeviceDialog({
+    required this.controller,
+    required this.currentName,
+  });
+
+  final AppController controller;
+  final String currentName;
+
+  @override
+  State<_RenameDeviceDialog> createState() => _RenameDeviceDialogState();
+}
+
+class _RenameDeviceDialogState extends State<_RenameDeviceDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final _text = TextEditingController(text: widget.currentName);
+  String? _saveError;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    if (widget.controller.renameDevice(_text.text.trim())) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _saveError = widget.controller.lastError ?? '无法修改设备名称');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('修改设备名称'),
+    content: Form(
+      key: _formKey,
+      child: TextFormField(
+        key: const ValueKey('device-name-input'),
+        controller: _text,
+        autofocus: true,
+        maxLength: 32,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        decoration: InputDecoration(labelText: '设备名称', errorText: _saveError),
+        validator: (value) {
+          final name = (value ?? '').trim();
+          if (name.isEmpty) return '请输入设备名称';
+          if (name.runes.length > 32) return '设备名称最多 32 个字符';
+          if (name.runes.any(
+            (rune) => rune < 32 || (rune >= 127 && rune <= 159),
+          )) {
+            return '设备名称不能包含控制字符';
+          }
+          return null;
+        },
+        onChanged: (_) {
+          if (_saveError != null) setState(() => _saveError = null);
+        },
+        onFieldSubmitted: (_) => _save(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: _save, child: const Text('保存')),
+    ],
+  );
 }
 
 class _OwnDevicesSettings extends StatelessWidget {

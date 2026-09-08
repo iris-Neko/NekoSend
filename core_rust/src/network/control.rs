@@ -1436,7 +1436,9 @@ fn protocol_error_code(error: &ControlError) -> Option<&'static str> {
         ControlError::Storage(error) => match error {
             StorageError::DirectoryUnwritable(_) => Some("CONFIG_DIRECTORY_UNWRITABLE"),
             StorageError::Open(_) => Some("STORAGE_OPEN_FAILED"),
-            StorageError::Migration(_) => Some("STORAGE_MIGRATION_FAILED"),
+            StorageError::Migration(_) | StorageError::InvalidMigrationForeignKeys => {
+                Some("STORAGE_MIGRATION_FAILED")
+            }
             StorageError::Write(_) | StorageError::Serialization(_) => Some("STORAGE_WRITE_FAILED"),
             StorageError::InvalidText => Some("MESSAGE_TOO_LARGE"),
             StorageError::Manifest(_) | StorageError::TransferSourceMismatch => {

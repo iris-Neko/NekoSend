@@ -21,30 +21,51 @@ class PlatformBootstrap {
     required this.dataDirectory,
     required this.deviceName,
     required this.platform,
+    this.legacyDeviceName,
   });
 
   final String dataDirectory;
   final String deviceName;
   final String platform;
+  final String? legacyDeviceName;
+
+  String? defaultNameUpgradeFor(String currentName) {
+    if (platform != 'android' ||
+        legacyDeviceName == null ||
+        currentName != legacyDeviceName ||
+        currentName == deviceName) {
+      return null;
+    }
+    return deviceName;
+  }
+
+  static Future<void> completeDeviceNameMigration() =>
+      _channel.invokeMethod<void>('completeDeviceNameMigration');
 
   String get databasePath =>
       '$dataDirectory${Platform.pathSeparator}lan_chat.db';
 
   static Future<PlatformBootstrap> load() async {
     _installChannelHandler();
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.linux) {
       final result = await _channel.invokeMapMethod<String, String>(
         'getBootstrapInfo',
       );
       final dataDirectory = result?['dataDirectory'];
       final deviceName = result?['deviceName'];
       if (dataDirectory == null || deviceName == null) {
-        throw StateError('Android platform bootstrap returned incomplete data');
+        throw StateError('Platform bootstrap returned incomplete data');
       }
       return PlatformBootstrap(
         dataDirectory: dataDirectory,
         deviceName: _normalizeName(deviceName),
-        platform: 'android',
+        platform: defaultTargetPlatform == TargetPlatform.android
+            ? 'android'
+            : 'linux',
+        legacyDeviceName: result?['legacyDeviceName'] == null
+            ? null
+            : _normalizeName(result!['legacyDeviceName']!),
       );
     }
 
@@ -376,7 +397,8 @@ class PlatformBootstrap {
   });
 
   static Future<void> updateActiveTransferCount(int count) {
-    if (defaultTargetPlatform != TargetPlatform.android) {
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.linux) {
       return Future<void>.value();
     }
     return _channel.invokeMethod<void>('updateActiveTransferCount', {
@@ -386,6 +408,9 @@ class PlatformBootstrap {
 
   static Future<void> exitApplication() =>
       _channel.invokeMethod<void>('exitApplication');
+
+  static Future<void> moveAndroidTaskToBackground() =>
+      _channel.invokeMethod<void>('moveToBackground');
 
   static Future<void> showSystemNotification({
     required String title,

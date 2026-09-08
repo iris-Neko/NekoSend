@@ -65,12 +65,22 @@ Future<void> main(List<String> arguments) async {
     await RustLib.init();
     final health = getCoreHealth();
     final bootstrap = await PlatformBootstrap.load();
-    final started = startCore(
+    var started = startCore(
       databasePath: bootstrap.databasePath,
       deviceName: bootstrap.deviceName,
       platform: bootstrap.platform,
       enableDiscovery: true,
     );
+    if (bootstrap.legacyDeviceName != null) {
+      final upgradedName = bootstrap.defaultNameUpgradeFor(started.deviceName);
+      if (upgradedName != null) {
+        started = updateDeviceName(
+          clientOperationId: generateClientOperationId(),
+          deviceName: upgradedName,
+        );
+      }
+      await PlatformBootstrap.completeDeviceNameMigration();
+    }
     coreRuntime = CoreRuntimeInfo.ready(
       version: health.coreVersion,
       protocolVersion: health.protocolVersion,
@@ -89,7 +99,7 @@ Future<void> main(List<String> arguments) async {
       }
     }
     var persistedSettings = getAppSettings();
-    if (bootstrap.platform == 'windows' &&
+    if (bootstrap.platform != 'android' &&
         persistedSettings.defaultReceiveRef == null) {
       final directory = await PlatformBootstrap.getDefaultReceiveDirectory();
       if (directory != null) {
@@ -233,9 +243,11 @@ Future<void> main(List<String> arguments) async {
             (peer) => NearbyDevice(
               id: peer.deviceId,
               name: peer.deviceName,
-              platform: peer.platform == 'android'
-                  ? DevicePlatform.android
-                  : DevicePlatform.windows,
+              platform: switch (peer.platform) {
+                'android' => DevicePlatform.android,
+                'linux' => DevicePlatform.linux,
+                _ => DevicePlatform.windows,
+              },
               relationLabel: switch (bindingByPeer[peer.deviceId]?.state) {
                 'active' => '我的设备',
                 'pending_outbound' => '绑定请求已发送',
@@ -1105,6 +1117,16 @@ void _registerDebugExtensions(
               receiveRef: requiredParameter(parameters, 'receiveRef'),
             );
             result = {'ok': true};
+          case 'rename_device':
+            final profile = updateDeviceName(
+              clientOperationId: generateClientOperationId(),
+              deviceName: requiredParameter(parameters, 'deviceName'),
+            );
+            result = {
+              'deviceId': profile.deviceId,
+              'deviceName': profile.deviceName,
+              'discoveryAvailable': profile.discoveryAvailable,
+            };
           case 'clear_receive_ref':
             setDefaultReceiveRef(
               clientOperationId: generateClientOperationId(),

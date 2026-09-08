@@ -40,6 +40,8 @@ class ActivityLifecycleInstrumentedTest {
 
         instrumentation.runOnMainSync { first.moveTaskToBack(true) }
         instrumentation.waitForIdleSync()
+        assertFalse(first.isFinishing)
+        assertSame(originalEngine, FlutterEngineCache.getInstance().get(MainActivity.ENGINE_ID))
         assertFalse(first.isClipboardListenerRegisteredForTesting())
 
         val secondMonitor = instrumentation.addMonitor(

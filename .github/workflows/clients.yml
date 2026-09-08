@@ -1,0 +1,97 @@
+name: Clients
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flutter:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy,rustfmt
+          targets: x86_64-unknown-linux-gnu,aarch64-linux-android,x86_64-linux-android
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - name: Locked dependencies
+        working-directory: app_flutter
+        run: flutter pub get --enforce-lockfile
+      - name: Format
+        working-directory: app_flutter
+        run: dart format --output=none --set-exit-if-changed lib test hook
+      - name: Analyze
+        working-directory: app_flutter
+        run: flutter analyze
+      - name: Test
+        working-directory: app_flutter
+        run: flutter test
+      - name: Build Windows
+        working-directory: app_flutter
+        run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekoSend-windows-x64
+          path: app_flutter/build/windows/x64/runner/Release/
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy,rustfmt
+          targets: x86_64-pc-windows-msvc,aarch64-linux-android,x86_64-linux-android
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - name: Build Android debug test package
+        working-directory: app_flutter
+        run: flutter build apk --debug --target-platform android-arm64
+      - name: JVM and instrumentation compilation
+        working-directory: app_flutter/android
+        run: ./gradlew app:testDebugUnitTestCompatibility app:assembleDebugAndroidTest --no-daemon -Ptarget-platform=android-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekoSend-android-debug-not-for-release
+          path: |
+            app_flutter/build/app/outputs/flutter-apk/app-debug.apk
+            app_flutter/build/app/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: error
+
+  flatpak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder python3
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --noninteractive -y flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.freedesktop.Sdk.Extension.llvm21//25.08
+      - name: Build Linux Flatpak
+        run: |
+          python3 scripts/verify_flatpak.py
+          bash packaging/linux/build-flatpak.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekoSend-linux-x86_64-flatpak
+          path: |
+            dist/*.flatpak
+            dist/*.sha256
+          if-no-files-found: error

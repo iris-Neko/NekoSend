@@ -43,7 +43,7 @@ UUIDv7 只用于唯一性和大致时间排序；业务顺序仍以数据库接�
 ### 平台与关系
 
 ```text
-Platform         = windows | android
+Platform         = windows | android | linux
 PeerRelation     = nearby | known | own_device
 Presence         = offline | online
 ReceivePolicy    = auto_accept | ask_every_time
@@ -149,7 +149,7 @@ PRAGMA temp_store = MEMORY;
 
 ## SQLite DDL（当前 Schema Version 3）
 
-以下 SQL 是当前权威结构。实现时拆成 V1、V2、V3 迁移文件，但最终语义和约束必须保持一致。
+以下 SQL 是当前 Schema V4 权威结构。实现时拆成 V1、V2、V3、V4 迁移文件，最终语义和约束必须保持一致。V4 扩展 Linux 平台；重建平台表时保留设备身份、绑定和待发送记录，并在恢复外键检查前验证引用完整性。
 
 ```sql
 CREATE TABLE schema_meta (
@@ -157,13 +157,13 @@ CREATE TABLE schema_meta (
     value TEXT NOT NULL
 ) STRICT;
 
-INSERT INTO schema_meta(key, value) VALUES ('schema_version', '3');
+INSERT INTO schema_meta(key, value) VALUES ('schema_version', '4');
 
-CREATE TABLE local_profile (
+CREATE TABLE "local_profile" (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
     device_id TEXT NOT NULL UNIQUE,
     device_name TEXT NOT NULL CHECK (length(device_name) BETWEEN 1 AND 32),
-    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android')),
+    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'linux')),
     group_sequence INTEGER NOT NULL DEFAULT 0 CHECK (group_sequence >= 0),
     clipboard_sequence INTEGER NOT NULL DEFAULT 0 CHECK (clipboard_sequence >= 0),
     created_at_ms INTEGER NOT NULL,
@@ -185,10 +185,10 @@ CREATE TABLE app_settings (
         CHECK (auto_open_receive_directory IN (0,1))
 ) STRICT;
 
-CREATE TABLE peers (
+CREATE TABLE "peers" (
     device_id TEXT PRIMARY KEY,
     device_name TEXT NOT NULL CHECK (length(device_name) BETWEEN 1 AND 32),
-    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android')),
+    platform TEXT NOT NULL CHECK (platform IN ('windows', 'android', 'linux')),
     relation TEXT NOT NULL DEFAULT 'nearby'
         CHECK (relation IN ('nearby', 'known', 'own_device')),
     receive_policy_override TEXT

@@ -2,7 +2,7 @@ enum SidebarSection { conversations, nearby }
 
 enum MainContent { conversation, transfers }
 
-enum DevicePlatform { windows, android }
+enum DevicePlatform { windows, android, linux }
 
 enum MessageVisualKind { text, file, image, folder, clipboard }
 

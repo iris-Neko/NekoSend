@@ -9,3 +9,7 @@
 /.vscode/
 *.log
 *.partial
+/dist/
+/.flatpak-builder/
+/.flatpak-build/
+/.flatpak-repo/

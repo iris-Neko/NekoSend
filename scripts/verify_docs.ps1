@@ -204,7 +204,7 @@ if ($sqlBlocks.Count -lt 2) {
                 Add-Failure "Documented current DDL failed in SQLite: $($sqliteOutput -join ' ')"
             } else {
                 $migrationSucceeded = $true
-                foreach ($migrationName in @('migration_v1.sql', 'migration_v2.sql', 'migration_v3.sql')) {
+                foreach ($migrationName in @('migration_v1.sql', 'migration_v2.sql', 'migration_v3.sql', 'migration_v4.sql')) {
                     $sourceMigrationPath = Join-Path $repoRoot "core_rust/src/storage/$migrationName"
                     $tempMigrationPath = Join-Path $tempDir $migrationName
                     [IO.File]::WriteAllText(
@@ -225,7 +225,7 @@ if ($sqlBlocks.Count -lt 2) {
                     $documentedSchema = @(& $sqlite.Source $documentedDbPath $schemaQuery)
                     $migratedSchema = @(& $sqlite.Source $migratedDbPath $schemaQuery)
                     if (@(Compare-Object $documentedSchema $migratedSchema).Count -ne 0) {
-                        Add-Failure 'The documented current DDL differs from the schema produced by V1 through V3 migrations.'
+                        Add-Failure 'The documented current DDL differs from the schema produced by V1 through V4 migrations.'
                     }
                 }
             }

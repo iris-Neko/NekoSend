@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "integration_harness"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lan_chat_core",
  "perf_harness",
@@ -577,7 +577,7 @@ dependencies = [
 
 [[package]]
 name = "lan_chat_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flutter_rust_bridge",
  "if-addrs",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "perf_harness"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "serde",

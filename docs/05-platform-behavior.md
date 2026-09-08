@@ -112,6 +112,20 @@
 - 恢复或 IPv4 地址变化时立即重绑 UDP、重新广播并重连已知待发送设备。
 - 不缓存网卡广播地址超过一次网络变化事件。
 
+## Linux x86_64 / Flatpak
+
+Linux 原生入口使用 GTK3 和 GApplication，平台通道与 Rust 核心分离，网络平台值为 linux。Flatpak 运行环境为 GNOME 50，应用 ID 为 `io.github.iris_neko.NekoSend`，命令为 `nekosend`。
+
+- 使用 XDG 数据目录，Flatpak 安装时实际位于 `~/.var/app/io.github.iris_neko.NekoSend/data/NekoSend/`，保存数据库与日志；默认接收目录为 XDG Downloads 下的 NekoSend 子目录。
+- 文件、文件夹选择通过 GtkFileChooserNative 和文件门户授权；不要求整个主目录访问权。下载目录外的源文件和接收目录需要用户选择，恢复任务依赖此前授权仍有效。
+- GApplication 保证单实例；重复启动呈现原窗口。关闭窗口按设置保留后台运行；支持 StatusNotifier 的桌面显示托盘，不支持托盘的桌面可再次启动应用找回窗口。Ctrl+Q 和托盘退出执行应用级退出确认。
+- 通知通过 GNotification/桌面门户发送，通知动作通过 GApplication 路由到对应会话，冷启动和运行中使用同一会话标识。
+- 开机启动设置使用 Background portal，请求桌面授权，拒绝时报告失败并恢复原设置。不会写入宿主任意路径或要求宿主命令权限。
+- 剪贴板文字使用 Flutter/GTK，图片使用 GTK 与本地持久源文件；图片受 20MiB 限制和像素尺寸限制，远端写入带自定义来源标记抑制回环。Wayland 的后台剪贴板可见性受桌面限制，不宣称所有桌面都支持无焦点自动同步。
+- 运行权限只包括网络、显示、图形加速、默认接收目录和 StatusNotifierWatcher 会话总线；不申请系统总线或任意主目录权限。UDP 53317 / TCP 53318 仍受宿主防火墙控制，安装器不会自动修改防火墙。
+
+构建与部署命令见 [Flatpak 说明](../packaging/linux/README.md)。Linux 提供与 Windows/Android 相同的明文局域网信任模型，不新增账号、公网中继或加密。
+
 ## Android 13+（API 33）
 
 ### SDK 与 ABI
@@ -120,6 +134,14 @@
 - V1 构建 `arm64-v8a`；开发调试可额外构建 `x86_64` 模拟器，但性能验收只用真机。
 - `compileSdk` 和 `targetSdk` 固定为创建工程时 Flutter 稳定版支持的最新已安装稳定 SDK，且不得低于 35。
 - Rust 产物通过 Android NDK 构建为 `arm64-v8a` 动态库。
+
+### 默认设备名称
+
+- Android 优先按顺序读取 `ro.product.marketname`、`ro.product.vendor.marketname`、`ro.product.odm.marketname`；没有有效值时回退到系统 `device_name`，最后使用 `Build.MODEL`，仍不可用则使用 `Android`。
+- 忽略空值、unknown、null 和含控制字符的候选名称。平台属性读取在工作线程执行，有超时和失败回退，不调用隐藏 API，不需要 root 或联网查找型号；Flutter 按权威名称长度上限规范化结果。
+- `getBootstrapInfo` 返回可读的 `deviceName`。旧默认名兼容检查尚未完成时，额外返回原始型号对应的 `legacyDeviceName`；只有本地持久名称仍等于该旧默认值时才升级，否则保留用户名称。
+- 核心成功启动并完成上述检查后，通过 `completeDeviceNameMigration` 保存 `readable_device_name_migrated` 标记；后续启动不再执行旧默认名升级，因此用户之后主动使用型号代码作为名称也不会被覆盖。
+- 这些字段和标记只属于本机平台适配，不改变网络协议、DeviceId 或 SQLite Schema。
 
 ### AndroidManifest 权限
 

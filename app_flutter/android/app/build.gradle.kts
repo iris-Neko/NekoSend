@@ -154,7 +154,10 @@ afterEvaluate {
         classpath = files(javaTestClasses, mainRuntimeJar) +
             configurations.getByName("debugUnitTestRuntimeClasspath")
         mainClass = "org.junit.runner.JUnitCore"
-        args("dev.lanchat.lan_chat.ForegroundServicePolicyTest")
+        args(
+            "dev.lanchat.lan_chat.ForegroundServicePolicyTest",
+            "dev.lanchat.lan_chat.DeviceNamePolicyTest",
+        )
     }
     tasks.named<org.gradle.api.tasks.testing.Test>("testDebugUnitTest") {
         dependsOn(compatibilityTest)

@@ -902,6 +902,12 @@ pub fn update_device_name(
     let runtime = guard
         .as_mut()
         .ok_or_else(|| "core is not started".to_owned())?;
+    // Validate and persist before interrupting the current network services.
+    let mut storage = Storage::open(&runtime.database_path).map_err(|error| error.to_string())?;
+    let profile = storage
+        .update_device_name(operation_id, &device_name)
+        .map_err(|error| error.to_string())?;
+    drop(storage);
     let network_enabled = runtime.discovery.is_some() || runtime.control.is_some();
     if let Some(mut control) = runtime.control.take() {
         control.shutdown();
@@ -909,11 +915,6 @@ pub fn update_device_name(
     if let Some(mut discovery) = runtime.discovery.take() {
         discovery.shutdown();
     }
-    let mut storage = Storage::open(&runtime.database_path).map_err(|error| error.to_string())?;
-    let profile = storage
-        .update_device_name(operation_id, &device_name)
-        .map_err(|error| error.to_string())?;
-    drop(storage);
     runtime.profile = profile.clone();
 
     let mut discovery_error = None;
@@ -1825,6 +1826,7 @@ fn parse_platform(value: &str) -> Result<Platform, String> {
     match value {
         "windows" => Ok(Platform::Windows),
         "android" => Ok(Platform::Android),
+        "linux" => Ok(Platform::Linux),
         _ => Err("platform must be windows or android".to_owned()),
     }
 }
@@ -1843,6 +1845,7 @@ fn platform_name(platform: Platform) -> &'static str {
     match platform {
         Platform::Windows => "windows",
         Platform::Android => "android",
+        Platform::Linux => "linux",
     }
 }
 
@@ -1889,6 +1892,12 @@ mod tests {
     }
 
     #[test]
+    fn linux_platform_has_its_own_api_value() {
+        assert_eq!(parse_platform("linux").unwrap(), Platform::Linux);
+        assert_eq!(platform_name(Platform::Linux), "linux");
+    }
+
+    #[test]
     fn unknown_core_error_does_not_expose_internal_details_as_user_copy() {
         let error = describe_core_error("secret internal detail".to_owned());
         assert_eq!(error.code, "INTERNAL_ERROR");
@@ -1908,7 +1917,13 @@ mod tests {
         )
         .unwrap();
         shutdown_core();
-        let second = start_core(path, "新名称".to_owned(), "windows".to_owned(), false).unwrap();
+        let second = start_core(
+            path.clone(),
+            "新名称".to_owned(),
+            "windows".to_owned(),
+            false,
+        )
+        .unwrap();
         assert_eq!(first.device_id, second.device_id);
         assert_eq!(second.device_name, "测试电脑");
         let renamed = update_device_name(
@@ -1917,7 +1932,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(renamed.device_name, "新名称");
+        assert_eq!(renamed.device_id, first.device_id);
+        assert!(
+            update_device_name(ClientOperationId::generate().to_string(), String::new()).is_err()
+        );
+        assert_eq!(get_local_profile().unwrap().device_name, "新名称");
         assert!(!second.discovery_available);
+        shutdown_core();
+        let reopened =
+            start_core(path, "默认名称".to_owned(), "windows".to_owned(), false).unwrap();
+        assert_eq!(reopened.device_id, first.device_id);
+        assert_eq!(reopened.device_name, "新名称");
         shutdown_core();
     }
 

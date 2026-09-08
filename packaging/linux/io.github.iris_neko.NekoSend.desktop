@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=NekoSend
+Name[zh_CN]=猫猫快传
+Comment=Chat and transfer files on your local network
+Comment[zh_CN]=局域网聊天与文件传输
+Exec=nekosend
+Icon=io.github.iris_neko.NekoSend
+Terminal=false
+Categories=Network;Utility;
+StartupNotify=true
+StartupWMClass=io.github.iris_neko.NekoSend
+DBusActivatable=true
+X-GNOME-UsesNotifications=true

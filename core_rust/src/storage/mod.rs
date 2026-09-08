@@ -28,10 +28,11 @@ mod groups;
 pub use bindings::*;
 pub use groups::*;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const MIGRATION_V1: &str = include_str!("migration_v1.sql");
 const MIGRATION_V2: &str = include_str!("migration_v2.sql");
 const MIGRATION_V3: &str = include_str!("migration_v3.sql");
+const MIGRATION_V4: &str = include_str!("migration_v4.sql");
 const MAX_CLIPBOARD_TEXT_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +205,8 @@ pub enum StorageError {
     Open(#[source] rusqlite::Error),
     #[error("database migration failed: {0}")]
     Migration(#[source] rusqlite::Error),
+    #[error("database migration left invalid foreign keys")]
+    InvalidMigrationForeignKeys,
     #[error("database write failed: {0}")]
     Write(#[source] rusqlite::Error),
     #[error("database contains an invalid device id")]
@@ -650,6 +653,7 @@ impl Storage {
                                 platform: match platform.as_str() {
                                     "windows" => Platform::Windows,
                                     "android" => Platform::Android,
+                                    "linux" => Platform::Linux,
                                     _ => return Err(StorageError::InvalidStoredId),
                                 },
                                 created_at_ms,
@@ -4011,7 +4015,8 @@ impl Storage {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT c.conversation_id, c.title_cache, c.peer_device_id, c.group_id, c.kind,
+                "SELECT c.conversation_id, COALESCE(p.device_name, c.title_cache),
+                        c.peer_device_id, c.group_id, c.kind,
                         COALESCE(m.text_content, m.display_name),
                         c.last_activity_at_ms, c.unread_count,
                         CASE WHEN c.kind = 'group' THEN (
@@ -4019,6 +4024,7 @@ impl Storage {
                             WHERE gm.group_id = c.group_id AND gm.membership = 'joined'
                         ) ELSE 2 END
                  FROM conversations c
+                 LEFT JOIN peers p ON c.kind = 'private' AND p.device_id = c.peer_device_id
                  LEFT JOIN messages m ON m.message_id = c.last_message_id
                  WHERE c.deleted_at_ms IS NULL
                  ORDER BY c.last_activity_at_ms DESC",
@@ -4574,9 +4580,50 @@ impl Storage {
                 .execute_batch(MIGRATION_V3)
                 .map_err(StorageError::Migration)?;
             transaction
-                .pragma_update(None, "user_version", SCHEMA_VERSION)
+                .pragma_update(None, "user_version", 3)
                 .map_err(StorageError::Migration)?;
             transaction.commit().map_err(StorageError::Migration)?;
+            version = 3;
+        }
+        if version == 3 {
+            // Rebuild referenced tables without cascading deletes into user data.
+            self.connection
+                .pragma_update(None, "foreign_keys", false)
+                .map_err(StorageError::Migration)?;
+            let migrated = (|| {
+                let transaction = self
+                    .connection
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .map_err(StorageError::Migration)?;
+                let locked_version: i64 = transaction
+                    .query_row("PRAGMA user_version", [], |row| row.get(0))
+                    .map_err(StorageError::Migration)?;
+                if locked_version == 3 {
+                    transaction
+                        .execute_batch(MIGRATION_V4)
+                        .map_err(StorageError::Migration)?;
+                    let violations: i64 = transaction
+                        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                            row.get(0)
+                        })
+                        .map_err(StorageError::Migration)?;
+                    if violations != 0 {
+                        return Err(StorageError::InvalidMigrationForeignKeys);
+                    }
+                    transaction
+                        .pragma_update(None, "user_version", SCHEMA_VERSION)
+                        .map_err(StorageError::Migration)?;
+                } else if locked_version != SCHEMA_VERSION {
+                    return Err(StorageError::UnsupportedSchema(locked_version));
+                }
+                transaction.commit().map_err(StorageError::Migration)
+            })();
+            let restored = self
+                .connection
+                .pragma_update(None, "foreign_keys", true)
+                .map_err(StorageError::Migration);
+            migrated?;
+            restored?;
         }
         Ok(())
     }
@@ -5139,6 +5186,7 @@ fn platform_name(platform: Platform) -> &'static str {
     match platform {
         Platform::Windows => "windows",
         Platform::Android => "android",
+        Platform::Linux => "linux",
     }
 }
 
@@ -5265,6 +5313,162 @@ mod tests {
                 )
                 .unwrap(),
             "0"
+        );
+    }
+
+    #[test]
+    fn v3_upgrade_preserves_identity_bindings_and_pending_messages() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("v3.db");
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch(MIGRATION_V1).unwrap();
+        connection.execute_batch(MIGRATION_V2).unwrap();
+        connection.execute_batch(MIGRATION_V3).unwrap();
+        connection.pragma_update(None, "user_version", 3).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        let mut old = Storage {
+            connection,
+            path: path.clone(),
+        };
+        let profile = old
+            .load_or_create_profile("Existing PC", Platform::Windows)
+            .unwrap();
+        let peer = DeviceId::from_bytes([8; 16]);
+        old.upsert_nearby_peer(peer, "Existing phone", Platform::Android, "127.0.0.1", 10)
+            .unwrap();
+        let conversation = old
+            .open_private_conversation(ClientOperationId::generate(), profile.device_id, peer)
+            .unwrap();
+        let message = old
+            .create_outgoing_text(
+                &profile,
+                &conversation.conversation_id,
+                "pending before upgrade",
+            )
+            .unwrap();
+        old.connection.execute(
+            "INSERT INTO own_device_bindings(peer_device_id, binding_id, state, clipboard_mode, requested_by_device_id, created_at_ms, updated_at_ms)
+             VALUES (?1, ?2, 'active', 'off', ?3, 1, 1)",
+            params![peer.to_string(), crate::domain::BindingId::generate().to_string(), profile.device_id.to_string()],
+        ).unwrap();
+        let payload = old.pending_outbox().unwrap()[0].payload_json.clone();
+        drop(old);
+
+        let mut current = Storage::open(&path).unwrap();
+        let restored = current
+            .load_or_create_profile("Default", Platform::Windows)
+            .unwrap();
+        assert_eq!(restored.device_id, profile.device_id);
+        assert_eq!(restored.device_name, "Existing PC");
+        assert_eq!(
+            current
+                .list_messages(&conversation.conversation_id, 100)
+                .unwrap()[0]
+                .message_id,
+            message.message_id
+        );
+        assert_eq!(current.pending_outbox().unwrap()[0].payload_json, payload);
+        assert_eq!(
+            current
+                .connection
+                .query_row("SELECT COUNT(*) FROM own_device_bindings", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            current
+                .connection
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            current
+                .connection
+                .query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        current
+            .upsert_nearby_peer(
+                DeviceId::from_bytes([9; 16]),
+                "Linux",
+                Platform::Linux,
+                "127.0.0.2",
+                20,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn v4_migration_rolls_back_when_existing_foreign_keys_are_invalid() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("invalid-v3.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        connection.execute_batch(MIGRATION_V1).unwrap();
+        connection.execute_batch(MIGRATION_V2).unwrap();
+        connection.execute_batch(MIGRATION_V3).unwrap();
+        connection.pragma_update(None, "user_version", 3).unwrap();
+        connection.execute(
+            "INSERT INTO own_device_bindings(peer_device_id, binding_id, state, clipboard_mode, requested_by_device_id, created_at_ms, updated_at_ms)
+             VALUES (?1, ?2, 'active', 'off', ?1, 1, 1)",
+            params![DeviceId::from_bytes([8; 16]).to_string(), crate::domain::BindingId::generate().to_string()],
+        ).unwrap();
+        drop(connection);
+        assert!(matches!(
+            Storage::open(&path),
+            Err(StorageError::InvalidMigrationForeignKeys)
+        ));
+        let unchanged = Connection::open(&path).unwrap();
+        assert_eq!(
+            unchanged
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            unchanged
+                .query_row("SELECT COUNT(*) FROM own_device_bindings", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        let sql: String = unchanged
+            .query_row(
+                "SELECT sql FROM sqlite_schema WHERE name='peers'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!sql.contains("'linux'"));
+    }
+
+    #[test]
+    fn linux_profile_persists_without_changing_identity() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("linux.db");
+        let profile = Storage::open(&path)
+            .unwrap()
+            .load_or_create_profile("Linux workstation", Platform::Linux)
+            .unwrap();
+        let reopened = Storage::open(&path)
+            .unwrap()
+            .load_or_create_profile("New default", Platform::Linux)
+            .unwrap();
+        assert_eq!(profile.device_id, reopened.device_id);
+        assert_eq!(reopened.device_name, "Linux workstation");
+        assert_eq!(reopened.platform, Platform::Linux);
+        assert_eq!(
+            serde_json::to_string(&Platform::Linux).unwrap(),
+            "\"linux\""
         );
     }
 
@@ -5403,6 +5607,30 @@ mod tests {
                 .load_or_create_profile(&"a".repeat(33), Platform::Windows)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn private_conversation_uses_the_latest_persisted_peer_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("lan_chat.db");
+        let mut storage = Storage::open(&path).unwrap();
+        let local = storage
+            .load_or_create_profile("PC", Platform::Windows)
+            .unwrap();
+        let peer = DeviceId::from_bytes([9; 16]);
+        storage
+            .upsert_nearby_peer(peer, "23127PN0CC", Platform::Android, "127.0.0.1", 10)
+            .unwrap();
+        storage
+            .open_private_conversation(ClientOperationId::generate(), local.device_id, peer)
+            .unwrap();
+        storage
+            .upsert_nearby_peer(peer, "Xiaomi 14", Platform::Android, "127.0.0.1", 20)
+            .unwrap();
+        assert_eq!(storage.list_conversations().unwrap()[0].title, "Xiaomi 14");
+        drop(storage);
+        let reopened = Storage::open(&path).unwrap();
+        assert_eq!(reopened.list_conversations().unwrap()[0].title, "Xiaomi 14");
     }
 
     #[test]

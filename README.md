@@ -2,7 +2,7 @@
 
 ## 目的
 
-本仓库包含 V1 的产品与技术规范，以及按实施指南逐步建设的 Windows/Android 客户端源码。文档面向第一次接触本项目的初级、中级程序员，目标是让实现者按照给定顺序阅读后，可以直接拆任务、编写代码和验收，而不需要重新决定产品行为、网络格式、数据库字段或状态转换。
+本仓库包含产品与技术规范，以及 Windows、Android 和 Linux 客户端源码。文档面向第一次接触本项目的初级、中级程序员，目标是让实现者按照给定顺序阅读后，可以直接拆任务、编写代码和验收，而不需要重新决定产品行为、网络格式、数据库字段或状态转换。
 
 产品名称为 **猫猫快传**，英文名 **NekoSend**。代码中的 `lan_chat`、`LAN Chat` 数据目录和协议标识是兼容性名称，不随产品展示名称改变。
 
@@ -19,25 +19,27 @@
 
 ## 当前开发状态
 
-当前已完成可运行的 Windows/Android V1 主链路；仓库内可自动化的代码、构建、平台和性能门禁已经完成，剩余项是第三台受支持实体设备、提升权限安装、防火墙现场枚举、生产 Android 签名和独立开发者文档复述：
+当前 0.2.0 已有 Windows、Android 和 Linux Flatpak 可运行客户端，但尚未完成完整 V1 发布验收。Windows + Android 14 + Android 16 三实体群聊以及 Linux 正式 Flatpak 的发现、消息、文件往返已验证。Android 返回导航、Windows 回车发送和可读设备命名已修复。已知限制包括 Android 16 样机后台冻结、尚未完整执行的多厂商/双 Windows 矩阵、生产 Android 签名及人工文档/安装验收，详见 [测试计划](docs/08-test-plan.md)。
 
 - Rust workspace 与 Windows/Linux CI。
 - `core_rust` 健康检查、稳定 ID、权威枚举和传输状态机。
 - `perf_harness` 原始 TCP 大文件收发命令，文件字节不经过 Flutter、JSON、哈希或 SQLite。
 - `integration_harness` TCP 回环传输与接收端持久化确认测试。
 - Flutter Windows/Android 工程、Windows 双栏布局、窄窗口单栏路由和 Android 底部导航。
-- 完整 SQLite Schema V3、V1 → V3 无损迁移、WAL 配置、稳定 `DeviceId`、附近设备持久化和私聊文字事务。
+- 完整 SQLite Schema V4、V1 → V4 无损迁移、WAL 配置、稳定 `DeviceId`、附近设备持久化和私聊文字事务；V4 新增 Linux 平台值，升级数据库后不可用旧版本应用直接打开。
 - UDP 自动发现（2 秒广播、7 秒离线）已在 Windows 与 Android 真机同一 Wi-Fi 双向验证。
+- 每台设备可在“设置 -> 设备名称”修改自己的名称；Android 默认优先使用系统提供的可读机型，兼容升级旧默认型号代码且不覆盖自定义名称。改名保持 DeviceId 不变，并同步附近列表和已有私聊标题。
 - TCP `53318` 长期双向控制连接、4 字节大端长度帧、Hello、同连接双向消息、`ping/pong`、投递回执、去重和永久 outbox 重试；同时建连时按 `(initiator_device_id, connection_id)` 确定性保留一条连接。
 - Rust → Flutter 使用容量 1,024 的事件流；消息、邀请、绑定、在线状态和最多每 250ms 一次的传输进度按类别局部刷新，断流后一秒重订阅并用快照校正。
-- Android 前台服务保持 Flutter/Rust 引擎、UDP/TCP 和发送队列在退到后台后继续运行；后台剪贴板读取仍按系统限制禁用。
+- Android 已接入前台服务，用于维持 Flutter/Rust 引擎、UDP/TCP 和后台发送队列；实际后台可用性仍需逐机型验证，后台剪贴板读取按系统限制禁用。
 - 真实会话、私聊、永久本地群聊、群成员管理、文件气泡、传输任务筛选/清理/跳转、接收确认、暂停/续传/取消、完成文件打开/显示位置和剪贴板同步均已接入 Rust 核心。
 - 接收端区分磁盘满、目录失效和权限丢失；失败后可重新选择 Windows 目录或 Android SAF Tree，并按新目录的实际安全偏移续传。
 - Android SAF 写入中途返回系统级 `ENOSPC` 的真机链路已通过：发送、接收两端均进入 `failed/not_enough_space`，关闭故障并更换接收目录后从 `929792` bytes 继续，最终 4MiB 文件大小和 SHA-256 一致且相关 outbox 清空。
 - Windows -> Android Rust 数据路径 10GiB 三轮中位 `210.91 MB/s`，同环境 SFTP 中位 `108.88 MB/s`；Android -> Windows 正式应用数据路径三轮中位 `34.040 MB/s`，同文件 SFTP 中位 `20.062 MB/s`。正式 App 通过系统真实 SAF Tree 接收非稀疏 100GiB 文件：锁屏下耗时 `576.6s`、有效吞吐 `186.22 MB/s`、Windows 工作集峰值增量 `34.57MiB`、Android PSS 峰值增量 `1.34MiB`，两端 SHA-256 一致。SQLite 续传与 Flutter 进度的分阶段 A/B 均未造成超过 3% 的中位吞吐下降；1,000 个 1MiB 同源文件和四个并发 512MiB 任务也已完成正式计分。
 - `flutter_rust_bridge` 代码生成与 Native Assets 构建钩子；应用启动时会加载 Rust 核心并读取核心/协议版本。
 - Windows Release 构建和 Flutter → Rust 真实调用测试。
-- Android 真机锁屏 `Dozing` 时前台服务、UDP/TCP 和 ADB 均保持可用；锁屏消息已现场验证进入 Windows 并在事件流触发后显示。
+- Android 14 样机锁屏 `Dozing` 时前台服务和双向消息已验证可用；Android 16 样机在 `isForeground=true` 时仍出现内核进程冻结，不能据此宣称所有受支持 Android 设备的锁屏收发均已通过。
+- 三实体节点已验证离线邀请补发、群主离线时手机间文字与文件直传、发送手机重启后的永久队列、群主上线补收、转让群主、改名、移除成员与权限限制，以及三端重启后的群资料和历史保留。Android 16 的冻结恢复需要重新激活应用，仍单独列为未通过项。
 
 运行 Rust 质量门禁：
 
@@ -94,7 +96,7 @@ LAN Chat 是运行在同一 IPv4 子网中的聊天式传输工具。用户像�
 
 固定平台与技术边界：
 
-- 客户端：Windows 10 x64、Android 13（API 33）及以上。
+- 客户端：Windows 10 x64、Android 13（API 33）及以上、Linux x86_64（Flatpak / GNOME 50 runtime）。
 - UI：Flutter。
 - 共享核心：Rust。
 - 数据库：SQLite WAL。
@@ -109,10 +111,21 @@ LAN Chat 是运行在同一 IPv4 子网中的聊天式传输工具。用户像�
 - 用户账号、手机号、邮箱登录或多设备云账号。
 - 互联网传输、跨 VLAN、NAT 穿透、云中继或云备份。
 - TLS、证书、密码、端到端加密或复杂身份认证。
-- iOS、macOS、Linux 的首发客户端。
+- iOS、macOS 客户端。
 - 语音、视频、音视频通话、表情商店、朋友圈等社交功能。
 - Android 后台静默读取系统剪贴板。
 - 文件压缩、内容去重、增量文件同步或应用层分块哈希。
+
+## Linux 安装与构建
+
+Linux 从 0.2.0 起提供真实桌面客户端和 Flatpak 包，沿用聊天、群聊、文件与恢复工作流。其他设备也需更新到 0.2.0 或以上才能识别 Linux 平台。
+
+```sh
+flatpak install --user ./NekoSend-0.2.0-linux-x86_64.flatpak
+flatpak run io.github.iris_neko.NekoSend
+```
+
+构建清单、权限说明和源码构建步骤见 [Linux / Flatpak](packaging/linux/README.md)。构建产物位于 `dist/`，不提交到源码 Git；通过 GitHub Release 或 CI artifacts 分发，不代表已上架 Flathub。Linux 数据存于 `~/.var/app/io.github.iris_neko.NekoSend/data/NekoSend/`。
 
 ## 文档阅读顺序
 

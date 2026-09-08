@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lan_chat/application/app_controller.dart';
 import 'package:lan_chat/application/models.dart';
@@ -95,27 +96,337 @@ const _fixtureMessages = <String, List<ChatMessage>>{
   ],
 };
 
-AppController _buildUiFixtureController() {
+AppController _buildUiFixtureController({
+  SendTextCommand? sendTextCommand,
+  DeviceNameUpdater? deviceNameUpdater,
+}) {
   final controller = AppController(
     initialNearbyDevices: _fixtureNearbyDevices,
     initialConversations: _fixtureConversations,
     initialMessages: _fixtureMessages,
+    deviceNameUpdater: deviceNameUpdater,
     openPrivateConversation: (device) => _fixtureConversations.firstWhere(
       (conversation) => conversation.peerDeviceId == device.id,
     ),
-    sendTextCommand: (_, text) => ChatMessage(
-      id: 'sent-${text.hashCode}',
-      content: text,
-      timeLabel: '刚刚',
-      outgoing: true,
-      kind: MessageVisualKind.text,
-      statusLabel: '正在发送',
+    sendTextCommand:
+        sendTextCommand ??
+        (_, text) => ChatMessage(
+          id: 'sent-${text.hashCode}',
+          content: text,
+          timeLabel: '刚刚',
+          outgoing: true,
+          kind: MessageVisualKind.text,
+          statusLabel: '正在发送',
+        ),
+  );
+  return controller;
+}
+
+Future<AppController> _pumpComposerFixture(
+  WidgetTester tester, {
+  TargetPlatform platform = TargetPlatform.windows,
+  Size size = const Size(1000, 700),
+  SendTextCommand? sendTextCommand,
+}) async {
+  await tester.binding.setSurfaceSize(size);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  final controller = _buildUiFixtureController(
+    sendTextCommand: sendTextCommand,
+  );
+  addTearDown(controller.dispose);
+  controller.selectConversation('phone');
+  await tester.pumpWidget(
+    MaterialApp(
+      home: LanChatHome(controller: controller, platform: platform),
     ),
   );
   return controller;
 }
 
 void main() {
+  for (final sourceIndex in [0, 1]) {
+    testWidgets(
+      'Android system back returns a chat to source tab $sourceIndex',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(360, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final controller = _buildUiFixtureController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: LanChatHome(
+              controller: controller,
+              platform: TargetPlatform.android,
+            ),
+          ),
+        );
+        if (sourceIndex == 1) {
+          await tester.tap(find.text('附近'));
+          await tester.pump();
+        }
+        controller.selectConversation('phone');
+        await tester.pump();
+        expect(find.byKey(const ValueKey('message-input')), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(controller.compactDetailVisible, isFalse);
+        expect(
+          tester
+              .widget<NavigationBar>(find.byType(NavigationBar))
+              .selectedIndex,
+          sourceIndex,
+        );
+        expect(find.byKey(const ValueKey('message-input')), findsNothing);
+      },
+    );
+  }
+
+  testWidgets('Android back returns transfers to the list', (tester) async {
+    final controller = await _pumpComposerFixture(
+      tester,
+      platform: TargetPlatform.android,
+      size: const Size(360, 800),
+    );
+    controller.showTransfers();
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(controller.compactDetailVisible, isFalse);
+    expect(find.byType(NavigationBar), findsOneWidget);
+  });
+
+  testWidgets(
+    'Android root back backgrounds only after returning from another tab',
+    (tester) async {
+      const channel = MethodChannel('dev.lanchat/platform');
+      final calls = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call.method);
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(360, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final controller = _buildUiFixtureController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LanChatHome(
+            controller: controller,
+            platform: TargetPlatform.android,
+          ),
+        ),
+      );
+      await tester.tap(find.text('附近'));
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        0,
+      );
+      expect(calls, isEmpty);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(calls, ['moveToBackground']);
+      expect(find.byType(LanChatHome), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Android back first dismisses the keyboard without leaving the chat',
+    (tester) async {
+      final controller = await _pumpComposerFixture(
+        tester,
+        platform: TargetPlatform.android,
+        size: const Size(360, 800),
+      );
+      final input = find.byKey(const ValueKey('message-input'));
+      await tester.enterText(input, '未发送草稿');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(controller.compactDetailVisible, isTrue);
+      expect(tester.widget<TextField>(input).controller!.text, '未发送草稿');
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(of: input, matching: find.byType(EditableText)),
+            )
+            .focusNode
+            .hasFocus,
+        isFalse,
+      );
+      tester.view.resetViewInsets();
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(controller.compactDetailVisible, isFalse);
+    },
+  );
+
+  const nameSettings = AppSettingsView(
+    deviceName: 'Xiaomi 14',
+    deviceId: 'device-name-test',
+    platform: 'android',
+    defaultReceivePolicy: 'auto_accept',
+    defaultReceiveRef: null,
+    notificationsEnabled: false,
+    closeToTray: true,
+    startOnBoot: false,
+    androidKeepOnline: true,
+    logLevel: 'normal',
+  );
+
+  testWidgets(
+    'Windows device name row saves and immediately refreshes the dialog',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final renamed = <String>[];
+      final controller = _buildUiFixtureController(
+        deviceNameUpdater: (name) {
+          renamed.add(name);
+          return nameSettings.copyWith(deviceName: name);
+        },
+      );
+      controller.settings = nameSettings;
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LanChatHome(
+            controller: controller,
+            platform: TargetPlatform.windows,
+          ),
+        ),
+      );
+      await tester.tap(find.byTooltip('设置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('device-name-setting')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('device-name-input')),
+        '  我的工作电脑  ',
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(renamed, ['我的工作电脑']);
+      expect(find.text('我的工作电脑'), findsOneWidget);
+      expect(controller.settings!.deviceId, 'device-name-test');
+      await tester.tap(find.byKey(const ValueKey('device-name-setting')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('device-name-input')),
+        '不保存的名字',
+      );
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(renamed, hasLength(1));
+      expect(find.text('我的工作电脑'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Android back dismisses a dialog before leaving settings', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = _buildUiFixtureController();
+    controller.settings = nameSettings;
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LanChatHome(
+          controller: controller,
+          platform: TargetPlatform.android,
+        ),
+      ),
+    );
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('device-name-setting')));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('device-name-input')), findsNothing);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      2,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+  });
+
+  testWidgets(
+    'Android rename validates input and keeps the draft after save failure',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var attempts = 0;
+      var failSave = true;
+      final controller = _buildUiFixtureController(
+        deviceNameUpdater: (name) {
+          attempts++;
+          if (failSave) throw StateError('无法保存名称');
+          return nameSettings.copyWith(deviceName: name);
+        },
+      );
+      controller.settings = nameSettings;
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LanChatHome(
+            controller: controller,
+            platform: TargetPlatform.android,
+          ),
+        ),
+      );
+      await tester.tap(find.text('设置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('device-name-setting')));
+      await tester.pumpAndSettle();
+      final input = find.byKey(const ValueKey('device-name-input'));
+      await tester.enterText(input, '   ');
+      await tester.tap(find.text('保存'));
+      await tester.pump();
+      expect(attempts, 0);
+      expect(find.text('请输入设备名称'), findsOneWidget);
+      await tester.enterText(input, List.filled(5, '👨‍👩‍👧‍👦').join());
+      await tester.tap(find.text('保存'));
+      await tester.pump();
+      expect(attempts, 0);
+      expect(find.text('设备名称最多 32 个字符'), findsOneWidget);
+      await tester.enterText(input, '我的手机');
+      await tester.tap(find.text('保存'));
+      await tester.pump();
+      expect(attempts, 1);
+      expect(find.byKey(const ValueKey('device-name-input')), findsOneWidget);
+      expect(find.text('我的手机'), findsOneWidget);
+      expect(controller.settings!.deviceName, 'Xiaomi 14');
+      failSave = false;
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(attempts, 2);
+      expect(controller.settings!.deviceName, '我的手机');
+      expect(find.text('我的手机'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('controller has no built-in data or no-op success commands', () {
     final controller = AppController();
     addTearDown(controller.dispose);
@@ -534,6 +845,171 @@ void main() {
 
     expect(find.text('测试消息'), findsOneWidget);
   });
+
+  for (final physicalKey in [
+    PhysicalKeyboardKey.enter,
+    PhysicalKeyboardKey.numpadEnter,
+  ]) {
+    testWidgets(
+      'Windows ${physicalKey.debugName} sends once and retains input focus',
+      (tester) async {
+        final controller = await _pumpComposerFixture(
+          tester,
+          size: Size(
+            physicalKey == PhysicalKeyboardKey.enter ? 1000 : 640,
+            700,
+          ),
+        );
+        final input = find.byKey(const ValueKey('message-input'));
+        await tester.enterText(input, '实体回车发送');
+        await tester.sendKeyEvent(
+          LogicalKeyboardKey.enter,
+          physicalKey: physicalKey,
+        );
+        await tester.pump();
+
+        expect(
+          controller.selectedMessages.where((m) => m.content == '实体回车发送'),
+          hasLength(1),
+        );
+        expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+        expect(
+          tester
+              .widget<EditableText>(
+                find.descendant(of: input, matching: find.byType(EditableText)),
+              )
+              .focusNode
+              .hasFocus,
+          isTrue,
+        );
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+  }
+
+  testWidgets('Windows Shift+Enter inserts a newline without sending', (
+    tester,
+  ) async {
+    final controller = await _pumpComposerFixture(tester);
+    final count = controller.selectedMessages.length;
+    final input = find.byKey(const ValueKey('message-input'));
+    await tester.enterText(input, '第一行');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    final handled = await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    expect(handled, isFalse);
+    expect(controller.selectedMessages, hasLength(count));
+    // Key simulation does not perform the native text input edit.
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: '第一行\n',
+        selection: TextSelection.collapsed(offset: 4),
+      ),
+    );
+    await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text, '第一行\n');
+    expect(controller.selectedMessages, hasLength(count));
+    await tester.enterText(input, '第一行\n第二行');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(controller.selectedMessages.last.content, '第一行\n第二行');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('Windows Enter leaves IME composition to the input method', (
+    tester,
+  ) async {
+    final controller = await _pumpComposerFixture(tester);
+    final count = controller.selectedMessages.length;
+    final input = find.byKey(const ValueKey('message-input'));
+    await tester.showKeyboard(input);
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: '中文',
+        selection: TextSelection.collapsed(offset: 2),
+        composing: TextRange(start: 0, end: 2),
+      ),
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(controller.selectedMessages, hasLength(count));
+    expect(tester.widget<TextField>(input).controller!.text, '中文');
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: '中文',
+        selection: TextSelection.collapsed(offset: 2),
+      ),
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+    expect(controller.selectedMessages, hasLength(count));
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(controller.selectedMessages.last.content, '中文');
+    expect(controller.selectedMessages, hasLength(count + 1));
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets(
+    'Windows held Enter does not retry a failure or discard the draft',
+    (tester) async {
+      var attempts = 0;
+      await _pumpComposerFixture(
+        tester,
+        sendTextCommand: (_, _) {
+          attempts++;
+          throw StateError('send failed');
+        },
+      );
+      final input = find.byKey(const ValueKey('message-input'));
+      await tester.enterText(input, '保留草稿');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(attempts, 1);
+      expect(tester.widget<TextField>(input).controller!.text, '保留草稿');
+      await tester.enterText(input, '   ');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(attempts, 1);
+      expect(tester.widget<TextField>(input).controller!.text, '   ');
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets('Android retains hardware newline and keyboard submit behavior', (
+    tester,
+  ) async {
+    final controller = await _pumpComposerFixture(
+      tester,
+      platform: TargetPlatform.android,
+      size: const Size(360, 800),
+    );
+    final count = controller.selectedMessages.length;
+    final input = find.byKey(const ValueKey('message-input'));
+    await tester.enterText(input, 'Android message');
+    final handled = await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(handled, isFalse);
+    expect(controller.selectedMessages, hasLength(count));
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: 'Android message\n',
+        selection: TextSelection.collapsed(offset: 16),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(input).controller!.text,
+      'Android message\n',
+    );
+    expect(controller.selectedMessages, hasLength(count));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(controller.selectedMessages, hasLength(count + 1));
+    expect(controller.selectedMessages.last.content, 'Android message\n');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets('opening a long conversation starts at the newest message', (
     tester,

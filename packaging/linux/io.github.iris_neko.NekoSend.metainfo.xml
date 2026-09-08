@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.iris_neko.NekoSend</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>NekoSend</name>
+  <name xml:lang="zh-CN">猫猫快传</name>
+  <summary>Chat-style file transfers on your local network</summary>
+  <summary xml:lang="zh-CN">像聊天一样进行局域网文件传输</summary>
+  <description>
+    <p>NekoSend discovers nearby devices and exchanges messages, files and folders
+    over a trusted local IPv4 network. Transfers can be paused and resumed, and
+    conversations and pending tasks are stored locally.</p>
+    <p>The application does not use a cloud relay or require an account. Local
+    network traffic is not encrypted; use it only on a network you trust.</p>
+  </description>
+  <launchable type="desktop-id">io.github.iris_neko.NekoSend.desktop</launchable>
+  <developer id="io.github.iris_neko"><name>iris-Neko</name></developer>
+  <url type="homepage">https://github.com/iris-Neko/NekoSend</url>
+  <url type="bugtracker">https://github.com/iris-Neko/NekoSend/issues</url>
+  <releases><release version="0.2.0" date="2026-09-08"/></releases>
+  <content_rating type="oars-1.1"/>
+  <supports><control>pointing</control><control>keyboard</control></supports>
+</component>
