@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import subprocess
 import tomllib
 import xml.etree.ElementTree as ET
@@ -86,9 +87,9 @@ def digest(path):
 
 
 def verify_android_certificate(report, expected):
-    # New apksigner versions label v3 signers by SDK range instead of "#1".
-    fingerprints = {value.lower() for value in re.findall(
-        r"(?m)^Signer [^\r\n]* certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$", report)}
+    # Hash the standard certificate encoding, not apksigner's human-readable labels.
+    certificates = re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", report, re.DOTALL)
+    fingerprints = {hashlib.sha256(ssl.PEM_cert_to_DER_cert(cert)).hexdigest() for cert in certificates}
     expected = expected.lower()
     if not re.fullmatch(r"[0-9a-f]{64}", expected) or fingerprints != {expected} or "android debug" in report.lower():
         raise ValueError(f"APK release certificate mismatch: expected {expected}, found {sorted(fingerprints)}")

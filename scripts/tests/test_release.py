@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import ssl
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,17 +13,19 @@ spec.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
-    def test_signer_labels_cover_number_and_sdk_range_without_relaxing_identity(self):
-        fingerprint = "a" * 64
-        for label in ["Signer #1", "Signer (minSdkVersion=33, maxSdkVersion=2147483647)"]:
-            report = f"{label} certificate DN: CN=NekoSend\n{label} certificate SHA-256 digest: {fingerprint}\n"
+    def test_certificate_verification_uses_pem_not_version_specific_signer_labels(self):
+        certificate = b"fixture certificate bytes"
+        fingerprint = hashlib.sha256(certificate).hexdigest()
+        pem = ssl.DER_cert_to_PEM_cert(certificate)
+        for label in ["Signer #1", "V2 Signer:", "Signer (minSdkVersion=33, maxSdkVersion=2147483647)"]:
+            report = f"{label} certificate DN: CN=NekoSend\n{pem}"
             release.verify_android_certificate(report, fingerprint)
             with self.assertRaises(ValueError):
                 release.verify_android_certificate(report, "b" * 64)
             with self.assertRaises(ValueError):
                 release.verify_android_certificate(report.replace("CN=NekoSend", "CN=Android Debug"), fingerprint)
             with self.assertRaises(ValueError):
-                release.verify_android_certificate(report + f"Signer #2 certificate SHA-256 digest: {'b' * 64}\n", fingerprint)
+                release.verify_android_certificate(report + ssl.DER_cert_to_PEM_cert(b"other certificate"), fingerprint)
         with self.assertRaises(ValueError):
             release.verify_android_certificate("Signer #1 public key SHA-256 digest: " + fingerprint, fingerprint)
 

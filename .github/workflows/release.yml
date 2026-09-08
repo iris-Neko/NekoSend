@@ -150,7 +150,7 @@ jobs:
         run: |
           signer=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
           test -n "$signer"
-          "$signer" verify --verbose --print-certs app_flutter/build/app/outputs/flutter-apk/app-release.apk > "$RUNNER_TEMP/android-certificate.txt"
+          "$signer" verify --verbose --print-certs --print-certs-pem app_flutter/build/app/outputs/flutter-apk/app-release.apk > "$RUNNER_TEMP/android-certificate.txt"
           python .release-tools/scripts/release.py collect --platform android --tag "$RELEASE_TAG" --sha "$RELEASE_SHA" --certificate-report "$RUNNER_TEMP/android-certificate.txt"
       - name: Remove runner signing key
         if: always()

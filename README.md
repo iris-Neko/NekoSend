@@ -21,7 +21,7 @@
 
 ## 当前开发状态
 
-当前 0.2.0 已有 Windows、Android 和 Linux Flatpak 可运行客户端，但尚未完成完整 V1 发布验收。Windows + Android 14 + Android 16 三实体群聊以及 Linux 正式 Flatpak 的发现、消息、文件往返已验证。Android 返回导航、Windows 回车发送和可读设备命名已修复。已知限制包括 Android 16 样机后台冻结、尚未完整执行的多厂商/双 Windows 矩阵、生产 Android 签名及人工文档/安装验收，详见 [测试计划](docs/08-test-plan.md)。
+当前 0.3.0 已包含 Windows、Android、Linux Flatpak 和 macOS 客户端，并接入四平台自动发布与固定 Android 发布签名，尚未完成完整 V1 真机验收。Windows + Android 14 + Android 16 三实体群聊以及 Linux Flatpak 的发现、消息、文件往返已有验证；macOS 已通过云端启动检查，跨设备互传仍待社区测试。已知限制包括 Android 16 样机后台冻结、尚未完整执行的多厂商/双 Windows 矩阵及人工文档/安装验收，详见 [测试计划](docs/08-test-plan.md)。
 
 - Rust workspace 与 Windows/Linux CI。
 - `core_rust` 健康检查、稳定 ID、权威枚举和传输状态机。
@@ -100,7 +100,7 @@ LAN Chat 是运行在同一 IPv4 子网中的聊天式传输工具。用户像�
 
 固定平台与技术边界：
 
-- 客户端：Windows 10 x64、Android 13（API 33）及以上、Linux x86_64（Flatpak / GNOME 50 runtime）。
+- 客户端：Windows 10 x64、Android 13（API 33）及以上、Linux x86_64（Flatpak / GNOME 50 runtime）、macOS 13 及以上（Apple Silicon / Intel）。
 - UI：Flutter。
 - 共享核心：Rust。
 - 数据库：SQLite WAL。
@@ -125,7 +125,7 @@ LAN Chat 是运行在同一 IPv4 子网中的聊天式传输工具。用户像�
 Linux 从 0.2.0 起提供真实桌面客户端和 Flatpak 包，沿用聊天、群聊、文件与恢复工作流。其他设备也需更新到 0.2.0 或以上才能识别 Linux 平台。
 
 ```sh
-flatpak install --user ./NekoSend-0.2.0-linux-x86_64.flatpak
+flatpak install --user ./NekoSend-linux-x86_64.flatpak
 flatpak run io.github.iris_neko.NekoSend
 ```
 
