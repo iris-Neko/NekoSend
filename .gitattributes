@@ -2,5 +2,4 @@
 *.rs text eol=lf
 *.dart text eol=lf
 packaging/linux/nekosend text eol=lf
-*.sh text eol=lf
 *.swift text eol=lf

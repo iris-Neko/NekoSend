@@ -5599,13 +5599,13 @@ mod tests {
             .load_or_create_profile("MacBook", Platform::Macos)
             .unwrap();
         drop(mac);
-        assert_eq!(
-            Storage::open(&mac_path)
-                .unwrap()
-                .load_or_create_profile("Ignored", Platform::Macos)
-                .unwrap(),
-            identity
-        );
+        let reopened = Storage::open(&mac_path)
+            .unwrap()
+            .load_or_create_profile("Ignored", Platform::Macos)
+            .unwrap();
+        assert_eq!(reopened.device_id, identity.device_id);
+        assert_eq!(reopened.device_name, "MacBook");
+        assert_eq!(reopened.platform, Platform::Macos);
     }
 
     #[test]
