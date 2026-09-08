@@ -73,12 +73,13 @@
           "type": "dir",
           "path": "../..",
           "skip": [
-            ".git", ".e2e-data", ".flatpak-builder", ".flatpak-build",
+            ".git", ".e2e-data", ".release-tools", "release-output", ".flatpak-builder", ".flatpak-build",
             ".flatpak-repo", "dist", "target", ".flutter-sdk",
             "app_flutter/.dart_tool", "app_flutter/build",
             "app_flutter/android/.gradle", "app_flutter/android/local.properties",
             "app_flutter/android/key.properties", "app_flutter/android/keystore",
-            "app_flutter/linux/flutter/ephemeral", "app_flutter/windows/flutter/ephemeral"
+            "app_flutter/linux/flutter/ephemeral", "app_flutter/windows/flutter/ephemeral",
+            "app_flutter/macos/Flutter/ephemeral"
           ]
         }
       ]

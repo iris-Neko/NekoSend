@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "${1:-$(dirname "$0")/../..}"
 app="$PWD/app_flutter/build/macos/Build/Products/Release/NekoSend.app"
 evidence="$PWD/dist/macos-evidence"
 database="$HOME/Library/Application Support/NekoSend/lan_chat.db"

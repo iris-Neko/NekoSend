@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "${1:-$(dirname "$0")/../..}"
 app="$PWD/app_flutter/build/macos/Build/Products/Release/NekoSend.app"
 out="$PWD/dist/macos"
 mkdir -p "$out"
