@@ -240,6 +240,18 @@ Android 10+ 规定普通应用只有作为当前焦点应用或默认输入法�
 - 通知使用稳定 route 参数：`conversation_id` 或 `transfer_id`。
 - 进程不存在时先启动核心，收到 CoreReady 后再导航；不能在数据库未迁移前查询消息。
 
+## macOS 测试构建
+
+- 使用普通非 App Store 沙箱应用，文件选择走 `NSOpenPanel`，接收目录默认 `~/Downloads/NekoSend`。
+- 数据库位于 `~/Library/Application Support/NekoSend`，剪贴板图片缓存位于用户 Caches 目录；不复用 Windows 数据路径。
+- 关闭窗口可隐藏到菜单栏；菜单栏和 Cmd+Q 的退出请求先交给 Flutter 确认活动传输，再关闭核心。
+- 剪贴板变化通过系统 pasteboard 计数轮询，远端图片写入后的变化计数用于防止回传。
+- 通知通过系统通知中心发送，点击跳转会话；网络路径变化通知共享核心重连。
+- 登录启动使用 `SMAppService`，要求 macOS 13 或以上，系统可能要求在登录项中批准；拒绝或失败不能静默显示保存成功。
+- 活动传输抑制 App Nap，但允许系统休眠，不以持续唤醒换取锁屏在线。
+- 分发为本地临时签名的 Universal DMG/ZIP，不具备 Developer ID 和 Apple 公证；需由用户对可信包执行系统允许打开流程，不能全局关闭 Gatekeeper。
+- 云端编译和启动检查不替代真实 Mac 的局域网、通知、权限弹窗及登录启动验收。
+
 ## 平台能力表
 
 | 能力 | Windows | Android 13+ |

@@ -27,7 +27,9 @@ jobs:
           channel: stable
           cache: true
       - name: Core tests
-        run: cargo test --workspace
+        run: |
+          cmp rust-toolchain.toml core_rust/rust-toolchain.toml
+          cargo test --workspace
       - name: Flutter checks
         working-directory: app_flutter
         run: |
