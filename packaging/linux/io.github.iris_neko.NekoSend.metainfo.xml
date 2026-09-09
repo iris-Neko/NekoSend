@@ -18,7 +18,7 @@
   <developer id="io.github.iris_neko"><name>iris-Neko</name></developer>
   <url type="homepage">https://github.com/iris-Neko/NekoSend</url>
   <url type="bugtracker">https://github.com/iris-Neko/NekoSend/issues</url>
-  <releases><release version="0.3.0" date="2026-09-08"/><release version="0.2.0" date="2026-09-08"/></releases>
+  <releases><release version="0.3.1" date="2026-09-09"/><release version="0.3.0" date="2026-09-08"/><release version="0.2.0" date="2026-09-08"/></releases>
   <content_rating type="oars-1.1"/>
   <supports><control>pointing</control><control>keyboard</control></supports>
 </component>

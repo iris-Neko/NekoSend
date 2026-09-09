@@ -39,7 +39,7 @@ void main() {
     final health = getCoreHealth();
 
     expect(health.status, 'ready');
-    expect(health.coreVersion, '0.3.0');
+    expect(health.coreVersion, '0.3.1');
     expect(health.protocolVersion, 1);
   });
 

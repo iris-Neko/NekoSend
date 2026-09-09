@@ -168,6 +168,8 @@ def publish(args):
 四个平台均从同一版本代码自动构建，下载安装包即可互通，无需自行编译。
 
 ## 下载
+本版本四个平台统一采用猫咪纸飞机应用图标。
+
 - Windows x64：`NekoSend-windows-x64.zip`，完整解压后运行 `lan_chat.exe`，保留 DLL 和 data 目录。
 - Android 13+ ARM64：`NekoSend-android-arm64.apk`，使用固定发布密钥签名；证书指纹见 `ANDROID-SIGNING-CERT.txt`。
 - Linux x86_64：`NekoSend-linux-x86_64.flatpak`，使用 `flatpak install --user ./NekoSend-linux-x86_64.flatpak` 安装，需要 Flathub 的 GNOME 50 运行时。

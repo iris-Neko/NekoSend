@@ -32,7 +32,9 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
     }
     UNUserNotificationCenter.current().delegate = self
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    item.button?.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: "NekoSend")
+    let trayImage = NSImage(named: "AppIcon")?.copy() as? NSImage
+    trayImage?.size = NSSize(width: 18, height: 18)
+    item.button?.image = trayImage
     let menu = NSMenu()
     for (title, action) in [("Open NekoSend", #selector(showWindow)),
                             ("Send Clipboard", #selector(sendClipboard)),

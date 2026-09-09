@@ -22,5 +22,5 @@ install -Dm644 packaging/linux/io.github.iris_neko.NekoSend.metainfo.xml \
   /app/share/metainfo/io.github.iris_neko.NekoSend.metainfo.xml
 install -Dm644 packaging/linux/io.github.iris_neko.NekoSend.service \
   /app/share/dbus-1/services/io.github.iris_neko.NekoSend.service
-install -Dm644 packaging/linux/io.github.iris_neko.NekoSend.svg \
-  /app/share/icons/hicolor/scalable/apps/io.github.iris_neko.NekoSend.svg
+install -Dm644 packaging/linux/io.github.iris_neko.NekoSend.png \
+  /app/share/icons/hicolor/512x512/apps/io.github.iris_neko.NekoSend.png
