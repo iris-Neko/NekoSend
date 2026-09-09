@@ -85,7 +85,14 @@ jobs:
           flutter build windows --release --no-pub
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package Windows
-        run: python .release-tools/scripts/release.py collect --platform windows --tag $env:RELEASE_TAG --sha $env:RELEASE_SHA
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
+            choco install innosetup --version=6.4.3 --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          ./.release-tools/scripts/build_windows_setup.ps1 -Version '${{ needs.prepare.outputs.version }}' -SourceRoot $env:GITHUB_WORKSPACE
+          ./.release-tools/scripts/test_windows_setup.ps1 -SourceRoot $env:GITHUB_WORKSPACE
+          python .release-tools/scripts/release.py collect --platform windows --tag $env:RELEASE_TAG --sha $env:RELEASE_SHA
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows

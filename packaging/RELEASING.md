@@ -1,6 +1,6 @@
 # Automatic Releases
 
-The `Release All Platforms` workflow builds Windows x64 ZIP, Android 13+ ARM64
+The `Release All Platforms` workflow builds Windows x64 EXE installer and ZIP, Android 13+ ARM64
 APK, Linux x86_64 Flatpak, and macOS 13+ Universal DMG/ZIP from one immutable
 source commit. No developer Apple account is needed; Mac artifacts remain
 ad-hoc signed and not notarized.

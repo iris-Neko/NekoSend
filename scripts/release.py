@@ -15,7 +15,7 @@ import zipfile
 
 
 PACKAGES = {
-    "windows": ["NekoSend-windows-x64.zip"],
+    "windows": ["NekoSend-windows-x64.zip", "NekoSend-windows-x64-setup.exe"],
     "android": ["NekoSend-android-arm64.apk", "ANDROID-SIGNING-CERT.txt"],
     "linux": ["NekoSend-linux-x86_64.flatpak"],
     "macos": ["NekoSend-macos-universal.dmg", "NekoSend-macos-universal.zip"],
@@ -170,7 +170,7 @@ def publish(args):
 ## 下载
 本版本四个平台统一采用猫咪纸飞机应用图标。
 
-- Windows x64：`NekoSend-windows-x64.zip`，完整解压后运行 `lan_chat.exe`，保留 DLL 和 data 目录。
+- Windows x64：推荐 `NekoSend-windows-x64-setup.exe` 安装程序，支持快捷方式、覆盖升级和系统卸载入口，卸载保留聊天数据；也提供 ZIP 便携版，完整解压后运行 `lan_chat.exe`。安装包未做商业代码签名，系统可能提示未知发布者。
 - Android 13+ ARM64：`NekoSend-android-arm64.apk`，使用固定发布密钥签名；证书指纹见 `ANDROID-SIGNING-CERT.txt`。
 - Linux x86_64：`NekoSend-linux-x86_64.flatpak`，使用 `flatpak install --user ./NekoSend-linux-x86_64.flatpak` 安装，需要 Flathub 的 GNOME 50 运行时。
 - macOS 13+ Apple Silicon / Intel：DMG 或 ZIP，将应用移入「应用程序」。使用临时签名，未经 Apple 公证；如被系统拦截，请对可信包在「隐私与安全性」允许打开，并允许局域网访问。不要全局关闭 Gatekeeper。

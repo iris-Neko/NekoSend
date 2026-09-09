@@ -59,7 +59,7 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             self.make_artifacts(directory)
-            self.assertEqual(len(release.validate_artifacts(directory, "v0.3.0", "a" * 40)), 6)
+            self.assertEqual(len(release.validate_artifacts(directory, "v0.3.0", "a" * 40)), 7)
             with self.assertRaises(ValueError):
                 release.validate_artifacts(directory, "v0.3.0", "b" * 40)
             (directory / "NekoSend-android-arm64.apk").write_bytes(b"tampered")
