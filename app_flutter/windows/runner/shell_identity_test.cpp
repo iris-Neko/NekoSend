@@ -14,6 +14,11 @@
 
 using Microsoft::WRL::ComPtr;
 
+bool SameFile(const std::filesystem::path& left, const std::filesystem::path& right) {
+  std::error_code error;
+  return std::filesystem::equivalent(left, right, error) && !error;
+}
+
 bool MakeLink(const std::filesystem::path& file, const std::filesystem::path& target,
               const wchar_t* app_id, const wchar_t* arguments = L"") {
   ComPtr<IShellLinkW> link;
@@ -47,7 +52,7 @@ bool CheckLink(const std::filesystem::path& file, const std::filesystem::path& t
       wcscmp(value.pwszVal, kAppUserModelId) == 0 &&
       SUCCEEDED(link->GetPath(path, MAX_PATH, nullptr, SLGP_RAWPATH)) &&
       SUCCEEDED(link->GetIconLocation(icon, MAX_PATH, &icon_index)) &&
-      std::filesystem::path(path) == target && std::filesystem::path(icon) == target && icon_index == 0;
+      SameFile(path, target) && SameFile(icon, target) && icon_index == 0;
   PropVariantClear(&value);
   return matches;
 }
