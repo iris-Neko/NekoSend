@@ -30,6 +30,7 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
+#include "shell_identity.h"
 #include "utils.h"
 
 namespace {
@@ -43,7 +44,6 @@ constexpr UINT kTrayPauseAll = 41003;
 constexpr UINT kTrayExit = 41004;
 constexpr size_t kMaxClipboardImageBytes = 20 * 1024 * 1024;
 constexpr wchar_t kClipboardOriginFormat[] = L"LAN_CHAT_ORIGIN";
-constexpr wchar_t kAppUserModelId[] = L"dev.lanchat.LANChat";
 
 std::wstring Utf16FromUtf8(const std::string& value);
 
@@ -73,73 +73,6 @@ std::wstring EscapeToastXml(const std::wstring& value) {
     }
   }
   return escaped;
-}
-
-HRESULT EnsureToastIdentity() {
-  HRESULT result = ::SetCurrentProcessExplicitAppUserModelID(kAppUserModelId);
-  if (FAILED(result)) return result;
-
-  PWSTR programs = nullptr;
-  result = ::SHGetKnownFolderPath(FOLDERID_Programs, KF_FLAG_CREATE, nullptr,
-                                  &programs);
-  if (FAILED(result)) return result;
-  const std::filesystem::path shortcut_path =
-      std::filesystem::path(programs) /
-      L"\x732B\x732B\x5FEB\x4F20.lnk";
-  ::CoTaskMemFree(programs);
-
-  std::vector<wchar_t> executable(32768);
-  const DWORD executable_length = ::GetModuleFileNameW(
-      nullptr, executable.data(), static_cast<DWORD>(executable.size()));
-  if (executable_length == 0 || executable_length >= executable.size()) {
-    const DWORD error = ::GetLastError();
-    return HRESULT_FROM_WIN32(error == ERROR_SUCCESS ? ERROR_BAD_PATHNAME
-                                                     : error);
-  }
-
-  IShellLinkW* shell_link = nullptr;
-  result = ::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-                              IID_PPV_ARGS(&shell_link));
-  if (FAILED(result)) return result;
-  result = shell_link->SetPath(executable.data());
-  if (SUCCEEDED(result)) {
-    result = shell_link->SetWorkingDirectory(
-        std::filesystem::path(executable.data()).parent_path().c_str());
-  }
-  if (SUCCEEDED(result)) {
-    result = shell_link->SetIconLocation(executable.data(), 0);
-  }
-  if (SUCCEEDED(result)) {
-    result = shell_link->SetDescription(L"\x732B\x732B\x5FEB\x4F20");
-  }
-
-  IPropertyStore* properties = nullptr;
-  if (SUCCEEDED(result)) {
-    result = shell_link->QueryInterface(IID_PPV_ARGS(&properties));
-  }
-  PROPVARIANT app_id{};
-  if (SUCCEEDED(result)) {
-    result = ::InitPropVariantFromString(kAppUserModelId, &app_id);
-  }
-  if (SUCCEEDED(result)) {
-    result = properties->SetValue(PKEY_AppUserModel_ID, app_id);
-  }
-  if (SUCCEEDED(result)) {
-    result = properties->Commit();
-  }
-  ::PropVariantClear(&app_id);
-  if (properties != nullptr) properties->Release();
-
-  IPersistFile* persist_file = nullptr;
-  if (SUCCEEDED(result)) {
-    result = shell_link->QueryInterface(IID_PPV_ARGS(&persist_file));
-  }
-  if (SUCCEEDED(result)) {
-    result = persist_file->Save(shortcut_path.c_str(), TRUE);
-  }
-  if (persist_file != nullptr) persist_file->Release();
-  shell_link->Release();
-  return result;
 }
 
 HRESULT ShowWindowsToast(HWND window, const std::wstring& title,
@@ -629,7 +562,7 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
 
-  toast_identity_status_ = EnsureToastIdentity();
+  toast_identity_status_ = EnsureShellIdentity();
 
   RECT frame = GetClientArea();
 

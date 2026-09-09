@@ -42,6 +42,8 @@ jobs:
       - name: Build Windows
         working-directory: app_flutter
         run: flutter build windows --release
+      - name: Windows taskbar identity regression
+        run: ./scripts/test_windows_shell.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: NekoSend-windows-x64

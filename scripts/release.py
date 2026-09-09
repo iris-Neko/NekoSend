@@ -163,9 +163,13 @@ def publish(args):
         raise ValueError("Release tag moved during the build")
     checksums = directory / "SHA256SUMS"
     checksums.write_text("".join(f"{digest(directory / name)}  {name}\n" for name in names), encoding="utf-8")
+    changes_path = Path("packaging") / f"release-{version}.md"
+    changes = changes_path.read_text(encoding="utf-8") if changes_path.is_file() else ""
     notes = f"""# NekoSend {version}
 
 四个平台均从同一版本代码自动构建，下载安装包即可互通，无需自行编译。
+
+{changes}
 
 ## 下载
 本版本四个平台统一采用猫咪纸飞机应用图标。
@@ -177,7 +181,7 @@ def publish(args):
 - `SHA256SUMS` 提供所有安装包的 SHA-256 校验值。
 
 ## 升级与已知限制
-- 所有设备更新到同一版本。0.2.0 不识别 macOS；0.3.0 包含聊天昵称、内置头像及 macOS 支持。
+- 跨设备互通需要对端支持相应平台和协议；0.2.0 不识别 macOS，0.3.0 起支持。具体版本兼容性见本版说明。
 - 此 Android 发布签名不同于此前本机调试版，无法直接覆盖安装。不要为升级贸然卸载调试版，否则会丢失本地记录；请先妥善备份。之后的正式签名包沿用同一密钥。
 - 数据库升级是单向的；升级前备份数据，不要用旧版打开升级后的数据库。
 - Windows 未做商业代码签名，macOS 未公证。iOS 暂未支持。

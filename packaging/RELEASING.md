@@ -8,7 +8,8 @@ ad-hoc signed and not notarized.
 ## Publish A Version
 
 1. Update the Cargo workspace version, Flutter pubspec version/build number,
-   AppStream release metadata, and any version assertions in tests.
+   AppStream release metadata, and any version assertions in tests. Add version
+   notes to `packaging/release-VERSION.md`; the workflow includes them in the release.
 2. Commit and push the changes to main.
 3. Create and push a matching tag, for example `git tag v0.3.1` followed by
    `git push origin v0.3.1`.
@@ -51,6 +52,9 @@ preserving its local history. The workflow never uses the debug-release bypass.
 Automated checks cover shared Rust/Flutter tests, Android JVM tests, APK
 signature/native library verification, full Windows bundles, Flatpak packaging,
 Mac Universal architecture/signature/image integrity and Release startup.
+Windows also checks Release/Debug shell identities, owned legacy shortcut
+migration, unrelated shortcut preservation, window icons, and installed shortcut
+AppUserModelID/icon metadata. Installer repair does not start the chat core.
 These do not replace real-device LAN transfer, permission, notification,
 clipboard, sleep and manufacturer battery-policy testing. Release notes state
 these limits and invite community reports without private data.

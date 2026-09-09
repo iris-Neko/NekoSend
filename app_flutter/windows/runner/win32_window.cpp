@@ -145,6 +145,7 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  UpdateIcons();
 
   return OnCreate();
 }
@@ -195,6 +196,7 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DPICHANGED: {
+      UpdateIcons();
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;
       LONG newHeight = newRectSize->bottom - newRectSize->top;
@@ -248,6 +250,7 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 void Win32Window::SetChildContent(HWND content) {
   child_content_ = content;
   SetParent(content, window_handle_);
+  UpdateIcons();
   RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
@@ -291,5 +294,21 @@ void Win32Window::UpdateTheme(HWND const window) {
     BOOL enable_dark_mode = light_mode == 0;
     DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                           &enable_dark_mode, sizeof(enable_dark_mode));
+  }
+}
+
+void Win32Window::UpdateIcons() {
+  const UINT dpi = GetDpiForWindow(window_handle_);
+  const HINSTANCE module = GetModuleHandle(nullptr);
+  const auto load = [module, dpi](int width_metric, int height_metric) {
+    return static_cast<HICON>(LoadImageW(module, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+        GetSystemMetricsForDpi(width_metric, dpi), GetSystemMetricsForDpi(height_metric, dpi), LR_SHARED));
+  };
+  const HICON small_icon = load(SM_CXSMICON, SM_CYSMICON);
+  const HICON large_icon = load(SM_CXICON, SM_CYICON);
+  for (const HWND window : {window_handle_, child_content_}) {
+    if (window == nullptr) continue;
+    if (small_icon != nullptr) SendMessageW(window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
+    if (large_icon != nullptr) SendMessageW(window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon));
   }
 }

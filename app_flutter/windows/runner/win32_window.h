@@ -89,6 +89,7 @@ class Win32Window {
 
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
+  void UpdateIcons();
 
   bool quit_on_close_ = false;
 

@@ -1,19 +1,41 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <shellapi.h>
+#include <shobjidl.h>
 
 #include <algorithm>
 
 #include "flutter_window.h"
+#include "shell_identity.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
+  if (FAILED(::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
+    return EXIT_FAILURE;
+  }
+  // The shell must know the application identity before any HWND is created.
+  ::SetCurrentProcessExplicitAppUserModelID(kAppUserModelId);
+  if (!command_line_arguments.empty() && command_line_arguments[0] == "--repair-shell-identity") {
+    int argument_count = 0;
+    LPWSTR* arguments = ::CommandLineToArgvW(::GetCommandLineW(), &argument_count);
+    if (arguments == nullptr || argument_count > 3) {
+      ::LocalFree(arguments);
+      ::CoUninitialize();
+      return EXIT_FAILURE;
+    }
+    const HRESULT result = EnsureShellIdentity(argument_count == 3 ? arguments[2] : nullptr);
+    ::LocalFree(arguments);
+    ::CoUninitialize();
+    return SUCCEEDED(result) ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
   HANDLE single_instance =
       ::CreateMutexW(nullptr, TRUE, L"Local\\LANChat.SingleInstance.V1");
   if (single_instance == nullptr) {
+    ::CoUninitialize();
     return EXIT_FAILURE;
   }
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -37,6 +59,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       ::SetForegroundWindow(existing);
     }
     ::CloseHandle(single_instance);
+    ::CoUninitialize();
     return EXIT_SUCCESS;
   }
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -44,10 +67,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
     CreateAndAttachConsole();
   }
-
-  // Initialize COM, so that it is available for use in the library and/or
-  // plugins.
-  ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
 

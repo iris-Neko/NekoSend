@@ -86,6 +86,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package Windows
         run: |
+          if (Test-Path './scripts/test_windows_shell.ps1') { ./scripts/test_windows_shell.ps1 }
           if (-not (Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
             choco install innosetup --version=6.4.3 --no-progress -y
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
