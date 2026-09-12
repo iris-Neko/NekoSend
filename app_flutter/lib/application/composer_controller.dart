@@ -157,9 +157,9 @@ class ComposerController extends ChangeNotifier {
       if (content.sources.isNotEmpty) {
         await _add(value, content.sources);
       } else if (content.text != null && content.text!.isNotEmpty) {
-        if (value.text.value != editing) throw StateError('输入已变化，请重新粘贴');
-        final selection = editing.selection.isValid
-            ? editing.selection
+        if (value.text.text != editing.text) throw StateError('输入已变化，请重新粘贴');
+        final selection = value.text.selection.isValid
+            ? value.text.selection
             : TextSelection.collapsed(offset: editing.text.length);
         final pasted = editing.text.replaceRange(
           selection.start,

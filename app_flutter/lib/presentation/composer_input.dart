@@ -287,6 +287,7 @@ class _ComposerInputState extends State<ComposerInput> {
                           focusNode: _inputFocus,
                           key: const ValueKey('message-input'),
                           controller: draft.text,
+                          selectAllOnFocus: false,
                           readOnly: draft.submitting,
                           minLines: 1,
                           maxLines: keyboardVisible ? 1 : 5,

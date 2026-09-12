@@ -66,6 +66,54 @@ Future<void> settle() async {
 }
 
 void main() {
+  testWidgets(
+    'paste button preserves an existing caption when regaining focus',
+    (tester) async {
+      final f = Fixture();
+      addTearDown(f.controller.dispose);
+      f.controller.draft('a').text.text = 'caption ';
+      f.content = const ClipboardContent(text: 'suffix');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ComposerInput(
+              controller: f.controller,
+              conversationId: 'a',
+              onSubmitted: () {},
+              sendOnEnter: true,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byTooltip('粘贴'));
+      await tester.pumpAndSettle();
+      expect(f.controller.draft('a').text.text, 'caption suffix');
+    },
+  );
+  testWidgets(
+    'paste button inserts text before the editor has ever had focus',
+    (tester) async {
+      final f = Fixture();
+      addTearDown(f.controller.dispose);
+      f.content = const ClipboardContent(text: 'pasted text');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ComposerInput(
+              controller: f.controller,
+              conversationId: 'a',
+              onSubmitted: () {},
+              sendOnEnter: true,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byTooltip('粘贴'));
+      await tester.pumpAndSettle();
+      expect(f.controller.draft('a').text.text, 'pasted text');
+      expect(f.controller.draft('a').error, isNull);
+    },
+  );
   test('preflight failure submits neither caption nor attachments', () async {
     final f = Fixture();
     addTearDown(f.controller.dispose);
