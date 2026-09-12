@@ -14,6 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  android-clipboard:
+    uses: ./.github/workflows/android-composer.yml
+    with:
+      source_ref: ${{ github.sha }}
   flutter:
     runs-on: windows-latest
     steps:

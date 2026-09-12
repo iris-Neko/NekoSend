@@ -170,6 +170,12 @@ jobs:
           path: release-output/*
           if-no-files-found: error
 
+  android-clipboard:
+    needs: prepare
+    uses: ./.github/workflows/android-composer.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.sha }}
+
   linux:
     needs: prepare
     runs-on: ubuntu-latest
@@ -266,7 +272,7 @@ jobs:
           if-no-files-found: ignore
 
   publish:
-    needs: [prepare, windows, android, linux, macos]
+    needs: [prepare, windows, android, android-clipboard, linux, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write

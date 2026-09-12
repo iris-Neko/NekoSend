@@ -121,16 +121,24 @@ void main() {
           ),
         ),
       );
-      await tester.runAsync(() async {
-        await precacheImage(
-          ResizeImage(
-            FileImage(File('../packaging/icons/app-icon.png').absolute),
-            width: 128,
-          ),
-          tester.element(find.byType(ComposerInput)),
+      for (var attempt = 0; attempt < 40; attempt++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
         );
-      });
+        await tester.pump();
+        if (tester
+            .widgetList<RawImage>(find.byType(RawImage))
+            .any((image) => image.image != null)) {
+          break;
+        }
+      }
       await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<RawImage>(find.byType(RawImage))
+            .any((image) => image.image != null),
+        isTrue,
+      );
       expect(tester.takeException(), isNull);
       if (output != null) {
         await tester.runAsync(() async {

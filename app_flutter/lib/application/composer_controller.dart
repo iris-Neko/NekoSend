@@ -155,7 +155,7 @@ class ComposerController extends ChangeNotifier {
       final content = await api.readClipboard();
       if (_disposed || value.removed) return;
       if (content.sources.isNotEmpty) {
-        _add(value, content.sources);
+        await _add(value, content.sources);
       } else if (content.text != null && content.text!.isNotEmpty) {
         if (value.text.value != editing) throw StateError('输入已变化，请重新粘贴');
         final selection = editing.selection.isValid
@@ -194,7 +194,7 @@ class ComposerController extends ChangeNotifier {
     _changed();
     try {
       final sources = await api.pick(kind);
-      if (!_disposed && !value.removed) _add(value, sources);
+      if (!_disposed && !value.removed) await _add(value, sources);
     } catch (error) {
       if (!value.removed) value.error = error.toString();
     } finally {
@@ -203,19 +203,22 @@ class ComposerController extends ChangeNotifier {
     }
   }
 
-  void _add(ComposerDraft value, List<AttachmentSource> sources) {
+  Future<void> _add(ComposerDraft value, List<AttachmentSource> sources) async {
+    final known = value.attachments.map((item) => item.source.identity).toSet();
+    var added = 0;
     for (final source in sources) {
-      if (value.attachments.any(
-        (item) => item.source.identity == source.identity,
-      )) {
-        continue;
-      }
+      if (_disposed || value.removed) break;
+      if (!known.add(source.identity)) continue;
       final item = DraftAttachment(
         source,
         PreparationToken(services!.operationId()),
       );
       value.attachments.add(item);
       _preparing = _preparing.then((_) => _prepare(value, item));
+      if (++added % 64 == 0) {
+        _changed();
+        await Future<void>.delayed(Duration.zero);
+      }
     }
     _changed();
   }

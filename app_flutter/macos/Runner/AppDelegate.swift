@@ -5,6 +5,7 @@ import Network
 import ServiceManagement
 import UniformTypeIdentifiers
 import UserNotifications
+import ImageIO
 
 @main
 class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
@@ -222,6 +223,14 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
   }
 
   private func cacheClipboardImage(png original: Data?, tiff: Data?, suppressed: Bool) throws -> [String: Any]? {
+    if let input = original ?? tiff {
+      guard input.count <= 20 * 1024 * 1024,
+            let source = CGImageSourceCreateWithData(input as CFData, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width > 0, height > 0, width <= 32 * 1024 * 1024 / height else { throw CocoaError(.fileReadTooLarge) }
+    }
     var png = original
     if png == nil, let tiff = tiff, let bitmap = NSBitmapImageRep(data: tiff) {
       guard bitmap.pixelsWide > 0, bitmap.pixelsHigh > 0, bitmap.pixelsWide * bitmap.pixelsHigh <= 32 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }

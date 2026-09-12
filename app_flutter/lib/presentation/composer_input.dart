@@ -6,7 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../application/composer_controller.dart';
 
-class ComposerInput extends StatelessWidget {
+class ComposerInput extends StatefulWidget {
   const ComposerInput({
     super.key,
     required this.controller,
@@ -19,13 +19,39 @@ class ComposerInput extends StatelessWidget {
   final VoidCallback onSubmitted;
   final bool sendOnEnter;
 
+  @override
+  State<ComposerInput> createState() => _ComposerInputState();
+}
+
+class _ComposerInputState extends State<ComposerInput> {
+  final _inputFocus = FocusNode();
+  ComposerController get controller => widget.controller;
+  String get conversationId => widget.conversationId;
+  bool get sendOnEnter => widget.sendOnEnter;
+
+  @override
+  void dispose() {
+    _inputFocus.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
-    await controller.submit(conversationId);
-    onSubmitted();
+    final target = conversationId;
+    await controller.submit(target);
+    if (!mounted) return;
+    widget.onSubmitted();
+    if (conversationId == target) _inputFocus.requestFocus();
   }
 
   void _paste() {
+    _inputFocus.requestFocus();
     controller.paste(conversationId);
+  }
+
+  Future<void> _pick(String kind) async {
+    final target = conversationId;
+    await controller.pick(target, kind);
+    if (mounted && conversationId == target) _inputFocus.requestFocus();
   }
 
   @override
@@ -160,8 +186,7 @@ class ComposerInput extends StatelessWidget {
                         MenuItemButton(
                           onPressed: draft.submitting || draft.importing
                               ? null
-                              : () =>
-                                    controller.pick(conversationId, entry.key),
+                              : () => _pick(entry.key),
                           child: Text(entry.value),
                         ),
                     ],
@@ -212,6 +237,7 @@ class ComposerInput extends StatelessWidget {
                           return KeyEventResult.handled;
                         },
                         child: TextField(
+                          focusNode: _inputFocus,
                           key: const ValueKey('message-input'),
                           controller: draft.text,
                           readOnly: draft.submitting,
@@ -254,7 +280,13 @@ class ComposerInput extends StatelessWidget {
                   IconButton.filled(
                     tooltip: '发送',
                     onPressed: draft.canSend ? _submit : null,
-                    icon: const Icon(LucideIcons.send, size: 19),
+                    icon: draft.submitting
+                        ? const SizedBox(
+                            width: 19,
+                            height: 19,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(LucideIcons.send, size: 19),
                   ),
                 ],
               ),

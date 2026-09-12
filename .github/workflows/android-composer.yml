@@ -1,0 +1,68 @@
+name: Android Clipboard Tests
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - id: check
+        run: |
+          if test -f app_flutter/android/app/src/androidTest/kotlin/dev/lanchat/lan_chat/ComposerClipboardInstrumentedTest.kt; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+          fi
+  emulator:
+    needs: inspect
+    if: needs.inspect.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-linux-android
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - name: Build isolated emulator package
+        working-directory: app_flutter
+        run: flutter build apk --debug --target-platform android-x64
+      - name: Enable KVM
+        run: |
+          sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: cd app_flutter/android && ./gradlew app:connectedDebugAndroidTest --no-daemon -Ptarget-platform=android-x64 -Pandroid.testInstrumentationRunnerArguments.class=dev.lanchat.lan_chat.ComposerClipboardInstrumentedTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-clipboard-test-results
+          path: app_flutter/build/app/outputs/androidTest-results/
+          if-no-files-found: ignore

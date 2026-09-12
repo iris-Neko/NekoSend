@@ -22,7 +22,7 @@ internal class ComposerClipboard(private val context: Context) {
         val files = (0 until clip.itemCount).mapNotNull { index ->
             val uri = clip.getItemAt(index).uri ?: return@mapNotNull null
             if (uri.scheme != "content") return@mapNotNull null
-            val mime = resolver.getType(uri) ?: "application/octet-stream"
+            val mime = resolver.getType(documentUri(uri)) ?: "application/octet-stream"
             mapOf("sourceRef" to uri.toString(), "displayName" to name(uri),
                 "kind" to when { mime == DocumentsContract.Document.MIME_TYPE_DIR -> "folder"
                     mime.startsWith("image/") -> "image"; else -> "file" },
@@ -104,7 +104,11 @@ internal class ComposerClipboard(private val context: Context) {
         } finally { cancelled.remove(token); active.remove(token) }
     }
 
-    private fun name(uri: Uri): String = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+    private fun documentUri(uri: Uri): Uri = if (DocumentsContract.isTreeUri(uri) && !DocumentsContract.isDocumentUri(context, uri)) {
+        DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+    } else uri
+
+    private fun name(uri: Uri): String = resolver.query(documentUri(uri), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
         if (it.moveToFirst()) it.getString(0) else null
     }?.takeIf { it.isNotBlank() } ?: "attachment"
 }
