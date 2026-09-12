@@ -13,6 +13,7 @@ import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import android.system.ErrnoException
 import android.system.OsConstants
+import android.webkit.MimeTypeMap
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.RandomAccessFile
@@ -146,7 +147,8 @@ class TestDocumentsProvider : DocumentsProvider() {
         put(row, columns, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             if (file == root) "root" else file.name)
         put(row, columns, DocumentsContract.Document.COLUMN_MIME_TYPE,
-            if (file.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else "application/octet-stream")
+            if (file.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else
+                MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream")
         put(row, columns, DocumentsContract.Document.COLUMN_FLAGS, flags)
         put(row, columns, DocumentsContract.Document.COLUMN_SIZE,
             if (file.isDirectory) null else file.length())

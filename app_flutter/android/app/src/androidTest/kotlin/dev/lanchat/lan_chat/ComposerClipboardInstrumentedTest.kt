@@ -46,7 +46,10 @@ class ComposerClipboardInstrumentedTest {
         val clip = ClipData.newRawUri("files", source)
         clip.addItem(ClipData.Item(source))
         val content = bridge.read(clip)
-        assertEquals(2, (content["items"] as List<*>).size)
+        val items = content["items"] as List<*>
+        assertEquals(2, items.size)
+        assertEquals("file", (items.first() as Map<*, *>)["kind"])
+        assertEquals(source.toString(), (items.first() as Map<*, *>)["sourceRef"])
         bridge.register("copy")
         val prepared = bridge.prepare(source, "file", "copy", session) { _, _ -> }
         assertArrayEquals(sourceBytes, File(prepared.getValue("path")).readBytes())

@@ -15,6 +15,8 @@ class Fixture {
   Completer<ClipboardContent>? read;
   Completer<PreparedAttachment>? preparation;
   String? failing;
+  bool invalidSource = false;
+  Completer<void>? submission;
   final sent = <String>[];
   final operations = <String>[];
   final released = <PreparedAttachment>[];
@@ -33,6 +35,7 @@ class Fixture {
     },
     submitText: (id, conversation, text) async {
       operations.add(id);
+      if (submission != null) await submission!.future;
       if (failing == text) throw StateError('submit failed');
       sent.add('$conversation:$text');
     },
@@ -44,6 +47,9 @@ class Fixture {
     },
     release: (item) async {
       released.add(item);
+    },
+    validate: (_) async {
+      if (invalidSource) throw StateError('source changed');
     },
   );
   late final controller = ComposerController(services);
@@ -60,6 +66,78 @@ Future<void> settle() async {
 }
 
 void main() {
+  test('preflight failure submits neither caption nor attachments', () async {
+    final f = Fixture();
+    addTearDown(f.controller.dispose);
+    f.content = const ClipboardContent(sources: [first]);
+    await f.controller.paste('a');
+    await settle();
+    f.controller.draft('a').text.text = 'caption';
+    f.invalidSource = true;
+    expect(await f.controller.submit('a'), isFalse);
+    expect(f.sent, isEmpty);
+    expect(f.controller.draft('a').text.text, 'caption');
+    expect(
+      f.controller.draft('a').attachments.single.error,
+      contains('source changed'),
+    );
+  });
+
+  test('submission lock prevents duplicate send commands', () async {
+    final f = Fixture();
+    addTearDown(f.controller.dispose);
+    f.submission = Completer();
+    f.controller.draft('a').text.text = 'caption';
+    final pending = f.controller.submit('a');
+    expect(await f.controller.submit('a'), isFalse);
+    f.submission!.complete();
+    expect(await pending, isTrue);
+    expect(f.sent, ['a:caption']);
+    expect(f.operations, hasLength(1));
+  });
+
+  testWidgets(
+    'small keyboard viewport keeps attachments accessible without overflow',
+    (tester) async {
+      final f = Fixture();
+      addTearDown(f.controller.dispose);
+      f.content = const ClipboardContent(sources: [first]);
+      await f.controller.paste('a');
+      await tester.pump();
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(360, 480);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                const SizedBox(height: 68),
+                const Spacer(),
+                ComposerInput(
+                  controller: f.controller,
+                  conversationId: 'a',
+                  onSubmitted: () {},
+                  sendOnEnter: false,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('composer-attachments')), findsNothing);
+      expect(find.text('1'), findsOneWidget);
+      await tester.tap(find.byTooltip('附件'));
+      await tester.pumpAndSettle();
+      expect(find.text('a.txt'), findsOneWidget);
+    },
+  );
+
   for (final width in [360.0, 1000.0]) {
     testWidgets('composer layout preview at $width', (tester) async {
       final output = Platform.environment['NEKOSEND_CAPTURE_COMPOSER'];

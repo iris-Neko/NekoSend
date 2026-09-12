@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      android_clipboard_only:
+        description: 'Run only the isolated Android clipboard tests'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,6 +24,7 @@ jobs:
     with:
       source_ref: ${{ github.sha }}
   flutter:
+    if: inputs.android_clipboard_only != true
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +63,7 @@ jobs:
           if-no-files-found: error
 
   android:
+    if: inputs.android_clipboard_only != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +95,7 @@ jobs:
           if-no-files-found: error
 
   flatpak:
+    if: inputs.android_clipboard_only != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

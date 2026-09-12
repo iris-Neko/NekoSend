@@ -173,6 +173,8 @@ ComposerServices createComposerServices(PlatformBootstrap bootstrap) {
           owned = '${sessionRoot.path}${Platform.pathSeparator}${token.id}';
           await Directory(owned).create(recursive: true);
           var copied = 0;
+          final clock = Stopwatch()..start();
+          var lastProgress = 0;
           for (final entry in manifest.sources) {
             token.check();
             final destination =
@@ -187,7 +189,10 @@ ComposerServices createComposerServices(PlatformBootstrap bootstrap) {
                   token.check();
                   await output.writeFrom(chunk);
                   copied += chunk.length;
-                  progress(copied, manifest.totalSize.toInt());
+                  if (clock.elapsedMilliseconds - lastProgress >= 100) {
+                    progress(copied, manifest.totalSize.toInt());
+                    lastProgress = clock.elapsedMilliseconds;
+                  }
                 }
                 await output.flush();
               } finally {
@@ -198,6 +203,7 @@ ComposerServices createComposerServices(PlatformBootstrap bootstrap) {
           if (copied != manifest.totalSize.toInt()) {
             throw StateError('附件内容已变化，请重新添加');
           }
+          progress(copied, manifest.totalSize.toInt());
           path =
               '$owned${Platform.pathSeparator}payload${Platform.pathSeparator}${manifest.displayName}';
           manifest = await rust.prepareComposerSource(

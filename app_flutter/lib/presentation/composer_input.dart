@@ -59,17 +59,31 @@ class _ComposerInputState extends State<ComposerInput> {
     animation: controller,
     builder: (context, _) {
       final draft = controller.draft(conversationId);
+      final media = MediaQuery.of(context);
+      final view = View.of(context);
+      // Scaffold removes consumed insets from its body MediaQuery.
+      final keyboardInset = view.viewInsets.bottom / view.devicePixelRatio;
+      final keyboardVisible = keyboardInset > 0 || media.viewInsets.bottom > 0;
+      final compact =
+          keyboardVisible &&
+          view.physicalSize.height / view.devicePixelRatio - keyboardInset <
+              280;
       return DecoratedBox(
         decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(top: BorderSide(color: Color(0xFFDCE3E6))),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+          padding: EdgeInsets.fromLTRB(
+            10,
+            keyboardVisible ? 4 : 8,
+            10,
+            keyboardVisible ? 4 : 10,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (draft.attachments.isNotEmpty)
+              if (draft.attachments.isNotEmpty && !compact)
                 SizedBox(
                   height: 100,
                   child: ListView.separated(
@@ -189,11 +203,34 @@ class _ComposerInputState extends State<ComposerInput> {
                               : () => _pick(entry.key),
                           child: Text(entry.value),
                         ),
+                      if (compact)
+                        for (final attachment in draft.attachments)
+                          MenuItemButton(
+                            leadingIcon: const Icon(LucideIcons.x, size: 16),
+                            onPressed: draft.submitting
+                                ? null
+                                : () {
+                                    controller.remove(
+                                      conversationId,
+                                      attachment,
+                                    );
+                                    _inputFocus.requestFocus();
+                                  },
+                            child: Text(
+                              attachment.source.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                     ],
                     builder: (context, menu, _) => IconButton(
                       tooltip: '附件',
                       onPressed: () => menu.isOpen ? menu.close() : menu.open(),
-                      icon: const Icon(LucideIcons.paperclip, size: 20),
+                      icon: Badge.count(
+                        count: draft.attachments.length,
+                        isLabelVisible: compact && draft.attachments.isNotEmpty,
+                        child: const Icon(LucideIcons.paperclip, size: 20),
+                      ),
                     ),
                   ),
                   IconButton(
@@ -242,7 +279,7 @@ class _ComposerInputState extends State<ComposerInput> {
                           controller: draft.text,
                           readOnly: draft.submitting,
                           minLines: 1,
-                          maxLines: 5,
+                          maxLines: keyboardVisible ? 1 : 5,
                           maxLength: 20000,
                           buildCounter: (
                             _, {
@@ -297,7 +334,7 @@ class _ComposerInputState extends State<ComposerInput> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       draft.error!,
-                      maxLines: 2,
+                      maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
