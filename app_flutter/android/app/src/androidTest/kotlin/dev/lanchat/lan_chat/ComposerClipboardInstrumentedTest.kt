@@ -86,12 +86,14 @@ class ComposerClipboardInstrumentedTest {
         DocumentsContract.createDocument(resolver, directory, DocumentsContract.Document.MIME_TYPE_DIR, "empty")
         val file = requireNotNull(DocumentsContract.createDocument(resolver, directory, "application/octet-stream", "child.bin"))
         resolver.openOutputStream(file, "w")!!.use { it.write(sourceBytes) }
-        val folder = DocumentsContract.buildTreeDocumentUri(TestDocumentsProvider.AUTHORITY, DocumentsContract.getDocumentId(directory))
+        val folder = directory
         val items = bridge.read(ClipData.newRawUri("folder", folder))["items"] as List<*>
         assertEquals("folder", (items.single() as Map<*, *>)["kind"])
         bridge.register("folder")
         val ready = bridge.prepare(folder, "folder", "folder", session) { _, _ -> }
         val copied = File(ready.getValue("path"))
+        assertEquals("composer-folder", copied.name)
+        assertFalse(File(copied, "composer-source.bin").exists())
         assertTrue(File(copied, "empty").isDirectory)
         assertArrayEquals(sourceBytes, File(copied, "child.bin").readBytes())
     }

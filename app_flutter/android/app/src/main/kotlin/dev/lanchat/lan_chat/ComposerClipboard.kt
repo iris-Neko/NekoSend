@@ -104,9 +104,14 @@ internal class ComposerClipboard(private val context: Context) {
         } finally { cancelled.remove(token); active.remove(token) }
     }
 
-    private fun documentUri(uri: Uri): Uri = if (DocumentsContract.isTreeUri(uri) && !DocumentsContract.isDocumentUri(context, uri)) {
-        DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
-    } else uri
+    private fun documentUri(uri: Uri): Uri {
+        if (!DocumentsContract.isTreeUri(uri)) return uri
+        // isDocumentUri also checks provider registration; a valid tree/document
+        // reference must never be broadened to the grant's root based on that.
+        val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        return if (documentId != null) uri else
+            DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+    }
 
     private fun name(uri: Uri): String = resolver.query(documentUri(uri), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
         if (it.moveToFirst()) it.getString(0) else null

@@ -27,8 +27,10 @@ internal class SafSourceAdapter(context: Context) {
             )
         }
 
-        val rootId = DocumentsContract.getTreeDocumentId(uri)
-        val rootUri = DocumentsContract.buildDocumentUriUsingTree(uri, rootId)
+        val rootId = runCatching { DocumentsContract.getDocumentId(uri) }
+            .getOrElse { DocumentsContract.getTreeDocumentId(uri) }
+        val rootUri = if (DocumentsContract.isTreeUri(uri))
+            DocumentsContract.buildDocumentUriUsingTree(uri, rootId) else uri
         val root = queryDocument(rootUri)
         val sources = mutableListOf<Map<String, Any?>>()
         sources += mapOf(
@@ -79,10 +81,9 @@ internal class SafSourceAdapter(context: Context) {
     }
 
     private fun queryChildren(treeUri: Uri, parent: Uri): List<Pair<Uri, DocumentInfo>> {
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            treeUri,
-            DocumentsContract.getDocumentId(parent),
-        )
+        val childrenUri = if (DocumentsContract.isTreeUri(treeUri))
+            DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(parent))
+        else DocumentsContract.buildChildDocumentsUri(requireNotNull(treeUri.authority), DocumentsContract.getDocumentId(parent))
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
@@ -95,7 +96,8 @@ internal class SafSourceAdapter(context: Context) {
                 while (cursor.moveToNext()) {
                     val documentId = cursor.getString(0)
                     add(
-                        DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId) to
+                        (if (DocumentsContract.isTreeUri(treeUri)) DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                        else DocumentsContract.buildDocumentUri(requireNotNull(treeUri.authority), documentId)) to
                             documentFromCursor(cursor, 1),
                     )
                 }
