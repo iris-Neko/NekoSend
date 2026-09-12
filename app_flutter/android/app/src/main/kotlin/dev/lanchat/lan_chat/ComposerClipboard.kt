@@ -11,6 +11,13 @@ import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 internal class ComposerClipboard(private val context: Context) {
+    companion object {
+        @Volatile private var instance: ComposerClipboard? = null
+        // Keep cancellation state across Activity recreation, without retaining an Activity.
+        fun shared(context: Context): ComposerClipboard = instance ?: synchronized(this) {
+            instance ?: ComposerClipboard(context.applicationContext).also { instance = it }
+        }
+    }
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
     private val active = ConcurrentHashMap.newKeySet<String>()
     private val resolver get() = context.contentResolver

@@ -59,6 +59,12 @@ class _ComposerInputState extends State<ComposerInput> {
     animation: controller,
     builder: (context, _) {
       final draft = controller.draft(conversationId);
+      final error =
+          draft.error ??
+          draft.attachments
+              .map((item) => item.error)
+              .whereType<String>()
+              .firstOrNull;
       final media = MediaQuery.of(context);
       final view = View.of(context);
       // Scaffold removes consumed insets from its body MediaQuery.
@@ -217,7 +223,11 @@ class _ComposerInputState extends State<ComposerInput> {
                                     _inputFocus.requestFocus();
                                   },
                             child: Text(
-                              attachment.source.name,
+                              '${attachment.source.name}${attachment.error != null
+                                  ? '（无法读取）'
+                                  : attachment.ready
+                                  ? ''
+                                  : '（准备中）'}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -327,13 +337,13 @@ class _ComposerInputState extends State<ComposerInput> {
                   ),
                 ],
               ),
-              if (draft.error != null)
+              if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      draft.error!,
+                      error,
                       maxLines: compact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.red, fontSize: 12),

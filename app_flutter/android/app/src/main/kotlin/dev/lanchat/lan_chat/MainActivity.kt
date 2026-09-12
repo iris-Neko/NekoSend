@@ -41,7 +41,7 @@ open class MainActivity : FlutterActivity() {
     private val safReceiveAdapter by lazy { SafReceiveAdapter(this) }
     private val safSourceAdapter by lazy { SafSourceAdapter(this) }
     private val documentFdAdapter by lazy { DocumentFdAdapter(this) }
-    private val composerClipboard by lazy { ComposerClipboard(this) }
+    private val composerClipboard by lazy { ComposerClipboard.shared(applicationContext) }
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         platformChannel?.invokeMethod("clipboardChanged", null)
     }
