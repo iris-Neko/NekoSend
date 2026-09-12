@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'models.dart';
+import 'composer_controller.dart';
 
 typedef NearbyPeerLoader = List<NearbyDevice> Function();
 typedef ConversationLoader = List<ConversationSummary> Function();
@@ -164,6 +165,7 @@ class AppController extends ChangeNotifier {
     this.messageDeliveryLoader,
     this.openPrivateConversation,
     this.sendTextCommand,
+    ComposerServices? composerServices,
     this.transferLoader,
     this.sourcePicker,
     this.sendSourceCommand,
@@ -204,7 +206,8 @@ class AppController extends ChangeNotifier {
     this.deleteConversationCommand,
     this.coreEventStreamFactory,
     this.errorPresenter = defaultErrorPresenter,
-  }) : nearbyDevices = List<NearbyDevice>.of(initialNearbyDevices),
+  }) : composer = ComposerController(composerServices),
+       nearbyDevices = List<NearbyDevice>.of(initialNearbyDevices),
        conversations = List<ConversationSummary>.of(initialConversations),
        selectedConversationId = initialConversations.isEmpty
            ? ''
@@ -224,6 +227,7 @@ class AppController extends ChangeNotifier {
   }
 
   final NearbyPeerLoader? nearbyPeerLoader;
+  final ComposerController composer;
   final ConversationLoader? conversationLoader;
   final MessageLoader? messageLoader;
   final MessageDeliveryLoader? messageDeliveryLoader;
@@ -1089,9 +1093,15 @@ class AppController extends ChangeNotifier {
       return false;
     }
     final deletedId = selectedConversationId;
+    if (composer.draft(deletedId).submitting) {
+      lastError = '消息正在提交，请稍后删除会话';
+      notifyListeners();
+      return false;
+    }
     try {
       lastError = null;
       deleteConversationCommand!(deletedId);
+      composer.forget(deletedId);
       conversations.removeWhere((item) => item.id == deletedId);
       _messagesByConversation.remove(deletedId);
       selectedConversationId = '';
@@ -1327,6 +1337,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    composer.dispose();
     _nearbyTimer?.cancel();
     _eventReconnectTimer?.cancel();
     _coreEventSubscription?.cancel();

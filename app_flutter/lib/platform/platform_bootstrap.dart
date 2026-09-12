@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../src/rust/api/core.dart';
+import '../application/composer_controller.dart';
 
 class PlatformBootstrap {
   static const _channel = MethodChannel('dev.lanchat/platform');
@@ -13,6 +14,54 @@ class PlatformBootstrap {
   static final _trayActions = StreamController<String>.broadcast();
   static final _foregroundActions = StreamController<String>.broadcast();
   static final _networkChanges = StreamController<void>.broadcast();
+  static final _composerProgress =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get composerProgress =>
+      _composerProgress.stream;
+
+  static Future<ClipboardContent> readClipboardContent() async {
+    final value = await retryWindowsClipboard(
+      () => _channel.invokeMapMethod<String, dynamic>('readClipboardContent'),
+    );
+    if (value == null) return const ClipboardContent();
+    return ClipboardContent(
+      text: value['text'] as String?,
+      sources: [
+        for (final raw in value['items'] as List<dynamic>? ?? [])
+          AttachmentSource(
+            reference: raw['sourceRef'] as String,
+            name: raw['displayName'] as String,
+            kind: raw['kind'] as String? ?? 'file',
+            ephemeral: raw['ephemeral'] == true,
+            fingerprint: raw['fingerprint'] as String?,
+          ),
+      ],
+    );
+  }
+
+  static Future<Map<String, dynamic>?> prepareComposerUri(
+    String uri,
+    String kind,
+    String token,
+    String session,
+  ) => _channel.invokeMapMethod<String, dynamic>('prepareComposerSource', {
+    'uri': uri,
+    'kind': kind,
+    'token': token,
+    'session': session,
+  });
+
+  static void cancelComposerPreparation(String token) {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      _channel
+          .invokeMethod<void>('cancelComposerSource', {'token': token})
+          .catchError((Object _) {});
+    }
+  }
+
+  static Future<void> validateComposerUris(List<String> uris) =>
+      _channel.invokeMethod<void>('validateComposerSources', {'uris': uris});
+
   static bool _channelHandlerInstalled = false;
   static bool _androidCoreStopped = false;
   static String? _suppressedClipboardText;
@@ -221,6 +270,8 @@ class PlatformBootstrap {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'clipboardChanged') {
         _clipboardChanges.add(null);
+      } else if (call.method == 'composerSourceProgress') {
+        _composerProgress.add(Map<String, dynamic>.from(call.arguments as Map));
       } else if (call.method == 'traySendClipboard' ||
           call.method == 'trayPauseAllTransfers') {
         _trayActions.add(call.method);

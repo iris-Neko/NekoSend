@@ -8,6 +8,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../application/app_controller.dart';
 import '../application/models.dart';
+import '../application/composer_controller.dart';
+import 'composer_input.dart';
 import '../platform/platform_bootstrap.dart';
 import '../src/rust/api/core.dart';
 import 'device_avatar.dart';
@@ -60,6 +62,7 @@ class LanChatApp extends StatefulWidget {
     this.messageDeliveryLoader,
     this.openPrivateConversation,
     this.sendTextCommand,
+    this.composerServices,
     this.transferLoader,
     this.sourcePicker,
     this.sendSourceCommand,
@@ -114,6 +117,7 @@ class LanChatApp extends StatefulWidget {
   final MessageDeliveryLoader? messageDeliveryLoader;
   final OpenPrivateConversation? openPrivateConversation;
   final SendTextCommand? sendTextCommand;
+  final ComposerServices? composerServices;
   final TransferLoader? transferLoader;
   final SourcePicker? sourcePicker;
   final SendSourceCommand? sendSourceCommand;
@@ -179,6 +183,7 @@ class _LanChatAppState extends State<LanChatApp> {
       messageDeliveryLoader: widget.messageDeliveryLoader,
       openPrivateConversation: widget.openPrivateConversation,
       sendTextCommand: widget.sendTextCommand,
+      composerServices: widget.composerServices,
       transferLoader: widget.transferLoader,
       sourcePicker: widget.sourcePicker,
       sendSourceCommand: widget.sendSourceCommand,
@@ -1366,12 +1371,22 @@ class _ConversationPaneState extends State<_ConversationPane> {
                 ],
               ),
             ),
-            _Composer(
-              textController: textController,
-              appController: widget.controller,
-              onSend: _sendText,
-              sendOnEnter: widget.sendOnEnter,
-            ),
+            if (widget.controller.composer.services != null)
+              ComposerInput(
+                controller: widget.controller.composer,
+                conversationId: widget.controller.selectedConversationId,
+                onSubmitted: () {
+                  if (mounted) widget.controller.refreshAll();
+                },
+                sendOnEnter: widget.sendOnEnter,
+              )
+            else
+              _Composer(
+                textController: textController,
+                appController: widget.controller,
+                onSend: _sendText,
+                sendOnEnter: widget.sendOnEnter,
+              ),
           ],
         ),
       ),

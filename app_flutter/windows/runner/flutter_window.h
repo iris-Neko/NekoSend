@@ -20,6 +20,7 @@ class FlutterWindow : public Win32Window {
   explicit FlutterWindow(const flutter::DartProject& project,
                          bool start_hidden = false);
   virtual ~FlutterWindow();
+  static int RunClipboardSelfTest();
 
  protected:
   // Win32Window:

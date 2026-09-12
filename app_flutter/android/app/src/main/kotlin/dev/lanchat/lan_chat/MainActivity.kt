@@ -41,6 +41,7 @@ open class MainActivity : FlutterActivity() {
     private val safReceiveAdapter by lazy { SafReceiveAdapter(this) }
     private val safSourceAdapter by lazy { SafSourceAdapter(this) }
     private val documentFdAdapter by lazy { DocumentFdAdapter(this) }
+    private val composerClipboard by lazy { ComposerClipboard(this) }
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         platformChannel?.invokeMethod("clipboardChanged", null)
     }
@@ -272,6 +273,34 @@ open class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "pickSource" -> launchSourcePicker(call.argument<String>("kind"), result)
+                "readClipboardContent" -> {
+                    check(window.decorView.hasWindowFocus()) { "请在前台聊天框中粘贴" }
+                    val clip = getSystemService(ClipboardManager::class.java).primaryClip
+                    runPlatformOperation(result) { composerClipboard.read(clip) }
+                }
+                "cancelComposerSource" -> {
+                    composerClipboard.cancel(requireNotNull(call.argument<String>("token")))
+                    result.success(null)
+                }
+                "prepareComposerSource" -> {
+                    val token = requireNotNull(call.argument<String>("token"))
+                    composerClipboard.register(token)
+                    runPlatformOperation(result) {
+                        composerClipboard.prepare(Uri.parse(requireNotNull(call.argument<String>("uri"))),
+                            requireNotNull(call.argument<String>("kind")), token,
+                            requireNotNull(call.argument<String>("session"))) { bytes, total ->
+                            runOnUiThread { platformChannel?.invokeMethod("composerSourceProgress",
+                                mapOf("token" to token, "bytes" to bytes, "total" to total)) }
+                        }
+                    }
+                }
+                "validateComposerSources" -> runPlatformOperation(result) {
+                    for (reference in requireNotNull(call.argument<List<String>>("uris"))) {
+                        contentResolver.openFileDescriptor(Uri.parse(reference), "r")?.use { }
+                            ?: error("附件权限已失效，请重新选择")
+                    }
+                    null
+                }
                 "readClipboardImage" -> runPlatformOperation(result) {
                     readClipboardImage()
                 }

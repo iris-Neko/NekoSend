@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/composer.dart';
 import 'api/core.dart';
 import 'api/health.dart';
 
@@ -46,6 +47,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
+  ComposerSourceDto dco_decode_box_autoadd_composer_source_dto(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_i_32(dynamic raw);
 
   @protected
@@ -64,6 +68,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ClipboardSendDto dco_decode_clipboard_send_dto(dynamic raw);
+
+  @protected
+  ComposerSourceDto dco_decode_composer_source_dto(dynamic raw);
 
   @protected
   ConversationDto dco_decode_conversation_dto(dynamic raw);
@@ -253,6 +260,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
+  ComposerSourceDto sse_decode_box_autoadd_composer_source_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_box_autoadd_i_32(SseDeserializer deserializer);
 
   @protected
@@ -273,6 +285,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ClipboardSendDto sse_decode_clipboard_send_dto(SseDeserializer deserializer);
+
+  @protected
+  ComposerSourceDto sse_decode_composer_source_dto(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ConversationDto sse_decode_conversation_dto(SseDeserializer deserializer);
@@ -509,6 +526,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_composer_source_dto(
+    ComposerSourceDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -532,6 +555,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_clipboard_send_dto(
     ClipboardSendDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_composer_source_dto(
+    ComposerSourceDto self,
     SseSerializer serializer,
   );
 

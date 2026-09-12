@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <map>
+#include <vector>
+#include <thread>
 
 namespace {
 constexpr gsize kMaxClipboardBytes = 20 * 1024 * 1024;
@@ -136,6 +139,177 @@ struct NekoPlatform {
   std::string data_directory;
   std::string portal_path;
   std::string pending_conversation;
+  guint clipboard_revision = 0;
+  std::map<std::string, std::vector<std::string>> composer_portal_cache;
+
+  struct ComposerRead {
+    GtkApplication* app;
+    GtkClipboard* clipboard;
+    FlMethodCall* call;
+    guint revision;
+    std::string directory;
+    std::string portal_key;
+    std::string path;
+    std::string hash;
+    std::string error;
+    ~ComposerRead() { g_object_unref(app); g_object_unref(clipboard); g_object_unref(call); }
+  };
+
+  static NekoPlatform* CurrentComposer(ComposerRead* read) {
+    auto* self = static_cast<NekoPlatform*>(g_object_get_data(G_OBJECT(read->app), kPlatformKey));
+    if (self == nullptr || self->clipboard_revision != read->revision) {
+      Failure(read->call, "CLIPBOARD_CHANGED", "Clipboard changed; paste again");
+      delete read;
+      return nullptr;
+    }
+    return self;
+  }
+
+  static void ComposerFiles(ComposerRead* read, const std::vector<std::string>& paths, bool ephemeral) {
+    g_autoptr(FlValue) response = fl_value_new_map();
+    g_autoptr(FlValue) items = fl_value_new_list();
+    size_t bytes = 0;
+    for (const auto& path : paths) bytes += path.size();
+    if (paths.size() > 10000 || bytes > 16 * 1024 * 1024) {
+      Failure(read->call, "CLIPBOARD_TOO_LARGE", "Clipboard file list is too large"); delete read; return;
+    }
+    for (const auto& path : paths) {
+      if (!g_utf8_validate(path.c_str(), static_cast<gssize>(path.size()), nullptr)) {
+        Failure(read->call, "CLIPBOARD_INVALID_PATH", "File path is not valid UTF-8"); delete read; return;
+      }
+      g_autofree gchar* name = g_path_get_basename(path.c_str());
+      FlValue* item = fl_value_new_map();
+      fl_value_set_string_take(item, "sourceRef", fl_value_new_string(path.c_str()));
+      fl_value_set_string_take(item, "displayName", fl_value_new_string(name));
+      fl_value_set_string_take(item, "ephemeral", fl_value_new_bool(ephemeral));
+      fl_value_append_take(items, item);
+    }
+    fl_value_set_string(response, "items", items);
+    Success(read->call, response);
+    delete read;
+  }
+
+  static void ComposerText(GtkClipboard*, const gchar* text, gpointer data) {
+    auto* read = static_cast<ComposerRead*>(data);
+    if (CurrentComposer(read) == nullptr) return;
+    g_autoptr(FlValue) response = fl_value_new_map();
+    fl_value_set_string_take(response, "text", fl_value_new_string(text == nullptr ? "" : text));
+    Success(read->call, response);
+    delete read;
+  }
+
+  static void ComposerImage(GtkClipboard*, GdkPixbuf* image, gpointer data) {
+    auto* read = static_cast<ComposerRead*>(data);
+    if (CurrentComposer(read) == nullptr) return;
+    if (image == nullptr) { gtk_clipboard_request_text(read->clipboard, ComposerText, read); return; }
+    const int64_t pixels = static_cast<int64_t>(gdk_pixbuf_get_width(image)) * gdk_pixbuf_get_height(image);
+    if (pixels <= 0 || pixels > kMaxClipboardPixels) {
+      Failure(read->call, "CLIPBOARD_TOO_LARGE", "Clipboard image dimensions are too large"); delete read; return;
+    }
+    g_object_ref(image);
+    std::thread([read, image]() {
+      gchar* bytes = nullptr;
+      gsize length = 0;
+      GError* error = nullptr;
+      if (!gdk_pixbuf_save_to_buffer(image, &bytes, &length, "png", &error, nullptr)) {
+        read->error = error == nullptr ? "Cannot encode clipboard image" : error->message;
+      } else if (length > kMaxClipboardBytes) {
+        read->error = "Clipboard image exceeds 20 MiB";
+      } else {
+        gchar* hash = g_compute_checksum_for_data(G_CHECKSUM_SHA256, reinterpret_cast<const guchar*>(bytes), length);
+        read->hash = hash;
+        g_free(hash);
+        const auto directory = Join(read->directory.c_str(), "clipboard");
+        g_mkdir_with_parents(directory.c_str(), 0700);
+        read->path = Join(directory.c_str(), (read->hash + ".png").c_str());
+        if (!g_file_test(read->path.c_str(), G_FILE_TEST_EXISTS) &&
+            !g_file_set_contents(read->path.c_str(), bytes, static_cast<gssize>(length), &error)) read->error = error->message;
+      }
+      g_clear_error(&error);
+      g_free(bytes);
+      g_object_unref(image);
+      g_main_context_invoke(nullptr, [](gpointer raw) -> gboolean {
+        auto* completed = static_cast<ComposerRead*>(raw);
+        if (CurrentComposer(completed) == nullptr) return G_SOURCE_REMOVE;
+        if (!completed->error.empty()) {
+          Failure(completed->call, "CLIPBOARD_READ_FAILED", completed->error.c_str());
+        } else {
+          g_autoptr(FlValue) response = fl_value_new_map();
+          g_autoptr(FlValue) items = fl_value_new_list();
+          FlValue* item = fl_value_new_map();
+          fl_value_set_string_take(item, "sourceRef", fl_value_new_string(completed->path.c_str()));
+          fl_value_set_string_take(item, "displayName", fl_value_new_string("clipboard.png"));
+          fl_value_set_string_take(item, "kind", fl_value_new_string("image"));
+          fl_value_set_string_take(item, "ephemeral", fl_value_new_bool(true));
+          fl_value_set_string_take(item, "fingerprint", fl_value_new_string(completed->hash.c_str()));
+          fl_value_append_take(items, item);
+          fl_value_set_string(response, "items", items);
+          Success(completed->call, response);
+        }
+        delete completed;
+        return G_SOURCE_REMOVE;
+      }, read);
+    }).detach();
+  }
+
+  static void ComposerUris(GtkClipboard*, gchar** uris, gpointer data) {
+    auto* read = static_cast<ComposerRead*>(data);
+    if (CurrentComposer(read) == nullptr) return;
+    std::vector<std::string> paths;
+    if (uris != nullptr) for (gchar** uri = uris; *uri != nullptr; ++uri) {
+      g_autofree gchar* path = g_filename_from_uri(*uri, nullptr, nullptr);
+      if (path != nullptr) paths.emplace_back(path);
+    }
+    if (!paths.empty()) ComposerFiles(read, paths, false);
+    else gtk_clipboard_request_image(read->clipboard, ComposerImage, read);
+  }
+
+  static void ComposerPortal(GtkClipboard*, GtkSelectionData* selection, gpointer data) {
+    auto* read = static_cast<ComposerRead*>(data);
+    auto* self = CurrentComposer(read);
+    if (self == nullptr) return;
+    const int length = gtk_selection_data_get_length(selection);
+    if (length <= 0) { gtk_clipboard_request_uris(read->clipboard, ComposerUris, read); return; }
+    if (length > 4096 || self->bus == nullptr) {
+      Failure(read->call, "CLIPBOARD_PORTAL_FAILED", "File portal is unavailable"); delete read; return;
+    }
+    read->portal_key.assign(reinterpret_cast<const char*>(gtk_selection_data_get_data(selection)), static_cast<size_t>(length));
+    while (!read->portal_key.empty() && read->portal_key.back() == '\0') read->portal_key.pop_back();
+    if (read->portal_key.empty() || read->portal_key.find('\0') != std::string::npos ||
+        !g_utf8_validate(read->portal_key.c_str(), static_cast<gssize>(read->portal_key.size()), nullptr)) {
+      Failure(read->call, "CLIPBOARD_PORTAL_FAILED", "Invalid file portal token"); delete read; return;
+    }
+    const auto cached = self->composer_portal_cache.find(read->portal_key);
+    if (cached != self->composer_portal_cache.end()) { ComposerFiles(read, cached->second, true); return; }
+    g_dbus_connection_call(self->bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+      "org.freedesktop.portal.FileTransfer", "RetrieveFiles",
+      g_variant_new("(s@a{sv})", read->portal_key.c_str(), g_variant_new_array(G_VARIANT_TYPE("{sv}"), nullptr, 0)),
+      G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE, 10000, self->cancellable,
+      [](GObject* object, GAsyncResult* result, gpointer raw) {
+        auto* pending = static_cast<ComposerRead*>(raw);
+        g_autoptr(GError) error = nullptr;
+        g_autoptr(GVariant) reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(object), result, &error);
+        auto* owner = CurrentComposer(pending);
+        if (owner == nullptr) return;
+        if (reply == nullptr) {
+          Failure(pending->call, "CLIPBOARD_PORTAL_FAILED", error->message); delete pending; return;
+        }
+        gchar** files = nullptr;
+        g_variant_get(reply, "(^as)", &files);
+        std::vector<std::string> paths;
+        for (gchar** file = files; file != nullptr && *file != nullptr; ++file) paths.emplace_back(*file);
+        g_strfreev(files);
+        owner->composer_portal_cache[pending->portal_key] = paths;
+        ComposerFiles(pending, paths, true);
+      }, read);
+  }
+
+  void ReadComposer(FlMethodCall* call) {
+    auto* read = new ComposerRead{GTK_APPLICATION(g_object_ref(application)),
+      GTK_CLIPBOARD(g_object_ref(clipboard)), FL_METHOD_CALL(g_object_ref(call)), clipboard_revision,
+      data_directory, {}, {}, {}, {}};
+    gtk_clipboard_request_contents(clipboard, gdk_atom_intern_static_string("application/vnd.portal.filetransfer"), ComposerPortal, read);
+  }
 
   NekoPlatform(GtkApplication* app, GtkWindow* app_window, FlEngine* engine)
       : application(app), window(app_window),
@@ -225,6 +399,8 @@ struct NekoPlatform {
       PickSource(call, StringArg(args, "kind"));
     } else if (method == "openReference") {
       OpenReference(call, StringArg(args, "reference"), BoolArg(args, "showInFolder"));
+    } else if (method == "readClipboardContent") {
+      ReadComposer(call);
     } else if (method == "readClipboardImage") {
       ReadClipboardImage(call);
     } else if (method == "writeClipboardImage") {
@@ -418,7 +594,10 @@ struct NekoPlatform {
   }
 
   static void ClipboardChanged(GtkClipboard*, GdkEventOwnerChange*, gpointer data) {
-    static_cast<NekoPlatform*>(data)->Emit("clipboardChanged");
+    auto* self = static_cast<NekoPlatform*>(data);
+    ++self->clipboard_revision;
+    self->composer_portal_cache.clear();
+    self->Emit("clipboardChanged");
   }
 
   static void NetworkChanged(GNetworkMonitor*, gboolean, gpointer data) {

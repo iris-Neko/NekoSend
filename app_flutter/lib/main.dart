@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import 'application/app_controller.dart';
 import 'application/models.dart';
+import 'application/composer_controller.dart';
+import 'platform/composer_services.dart';
 import 'platform/platform_bootstrap.dart';
 import 'presentation/lan_chat_app.dart';
 import 'src/rust/api/core.dart';
@@ -17,6 +19,7 @@ Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   CoreRuntimeInfo coreRuntime;
+  ComposerServices? composerServices;
   NearbyPeerLoader? nearbyPeerLoader;
   ConversationLoader? conversationLoader;
   MessageLoader? messageLoader;
@@ -65,6 +68,7 @@ Future<void> main(List<String> arguments) async {
     await RustLib.init();
     final health = getCoreHealth();
     final bootstrap = await PlatformBootstrap.load();
+    composerServices = createComposerServices(bootstrap);
     var started = startCore(
       databasePath: bootstrap.databasePath,
       deviceName: bootstrap.deviceName,
@@ -844,6 +848,7 @@ Future<void> main(List<String> arguments) async {
   runApp(
     LanChatApp(
       coreRuntime: coreRuntime,
+      composerServices: composerServices,
       nearbyPeerLoader: nearbyPeerLoader,
       conversationLoader: conversationLoader,
       messageLoader: messageLoader,

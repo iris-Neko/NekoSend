@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 903331418;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1487716867;
 
 // Section: executor
 
@@ -1001,6 +1001,45 @@ fn wire__crate__api__core__poll_platform_requests_impl(
         },
     )
 }
+fn wire__crate__api__composer__prepare_composer_source_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "prepare_composer_source",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_kind = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::composer::prepare_composer_source(api_path, api_kind)
+                                .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__core__remove_own_device_binding_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1647,6 +1686,93 @@ fn wire__crate__api__core__start_core_impl(
         },
     )
 }
+fn wire__crate__api__composer__submit_composer_attachment_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "submit_composer_attachment",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client_operation_id = <String>::sse_decode(&mut deserializer);
+            let api_conversation_id = <String>::sse_decode(&mut deserializer);
+            let api_source =
+                <crate::api::composer::ComposerSourceDto>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::composer::submit_composer_attachment(
+                            api_client_operation_id,
+                            api_conversation_id,
+                            api_source,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__composer__submit_composer_text_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "submit_composer_text",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_client_operation_id = <String>::sse_decode(&mut deserializer);
+            let api_conversation_id = <String>::sse_decode(&mut deserializer);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::composer::submit_composer_text(
+                            api_client_operation_id,
+                            api_conversation_id,
+                            api_text,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__core__submit_local_clipboard_text_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1921,6 +2047,22 @@ impl SseDecode for crate::api::core::ClipboardSendDto {
             message_id: var_messageId,
             event_id: var_eventId,
             clipboard_sequence: var_clipboardSequence,
+        };
+    }
+}
+
+impl SseDecode for crate::api::composer::ComposerSourceDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_displayName = <String>::sse_decode(deserializer);
+        let mut var_kind = <String>::sse_decode(deserializer);
+        let mut var_totalSize = <u64>::sse_decode(deserializer);
+        let mut var_sources = <Vec<crate::api::core::SourceItemDto>>::sse_decode(deserializer);
+        return crate::api::composer::ComposerSourceDto {
+            display_name: var_displayName,
+            kind: var_kind,
+            total_size: var_totalSize,
+            sources: var_sources,
         };
     }
 }
@@ -2757,7 +2899,22 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        50 => wire__crate__api__core__subscribe_core_events_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__composer__prepare_composer_source_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        50 => wire__crate__api__composer__submit_composer_attachment_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        51 => {
+            wire__crate__api__composer__submit_composer_text_impl(port, ptr, rust_vec_len, data_len)
+        }
+        53 => wire__crate__api__core__subscribe_core_events_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2804,40 +2961,40 @@ fn pde_ffi_dispatcher_sync_impl(
         28 => wire__crate__api__core__open_private_conversation_impl(ptr, rust_vec_len, data_len),
         29 => wire__crate__api__core__pause_transfer_impl(ptr, rust_vec_len, data_len),
         30 => wire__crate__api__core__poll_platform_requests_impl(ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__core__remove_own_device_binding_impl(ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__core__replace_receive_destination_path_impl(
+        32 => wire__crate__api__core__remove_own_device_binding_impl(ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__core__replace_receive_destination_path_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        33 => wire__crate__api__core__replace_receive_destination_prepared_impl(
+        34 => wire__crate__api__core__replace_receive_destination_prepared_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        34 => {
+        35 => {
             wire__crate__api__core__replace_transfer_source_items_impl(ptr, rust_vec_len, data_len)
         }
-        35 => {
+        36 => {
             wire__crate__api__core__replace_transfer_source_path_impl(ptr, rust_vec_len, data_len)
         }
-        36 => wire__crate__api__core__request_own_device_binding_impl(ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__core__resume_transfer_impl(ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__core__send_clipboard_image_items_impl(ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__core__send_clipboard_text_message_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__core__send_source_items_impl(ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__core__send_source_path_impl(ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__core__send_text_message_impl(ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__core__set_clipboard_mode_impl(ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__core__set_default_receive_ref_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__core__set_device_avatar_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__core__set_peer_receive_policy_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__core__shutdown_core_impl(ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__core__start_core_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__core__submit_local_clipboard_text_impl(ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__core__update_app_settings_impl(ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__core__update_device_name_impl(ptr, rust_vec_len, data_len),
-        53 => wire__crate__api__core__update_group_impl(ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__core__request_own_device_binding_impl(ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__core__resume_transfer_impl(ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__core__send_clipboard_image_items_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__core__send_clipboard_text_message_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__core__send_source_items_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__core__send_source_path_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__core__send_text_message_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__core__set_clipboard_mode_impl(ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__core__set_default_receive_ref_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__core__set_device_avatar_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__core__set_peer_receive_policy_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__core__shutdown_core_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__core__start_core_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__core__submit_local_clipboard_text_impl(ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__core__update_app_settings_impl(ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__core__update_device_name_impl(ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__core__update_group_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2892,6 +3049,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::core::ClipboardSendDto>
     for crate::api::core::ClipboardSendDto
 {
     fn into_into_dart(self) -> crate::api::core::ClipboardSendDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::composer::ComposerSourceDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.display_name.into_into_dart().into_dart(),
+            self.kind.into_into_dart().into_dart(),
+            self.total_size.into_into_dart().into_dart(),
+            self.sources.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::composer::ComposerSourceDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::composer::ComposerSourceDto>
+    for crate::api::composer::ComposerSourceDto
+{
+    fn into_into_dart(self) -> crate::api::composer::ComposerSourceDto {
         self
     }
 }
@@ -3537,6 +3717,16 @@ impl SseEncode for crate::api::core::ClipboardSendDto {
         <String>::sse_encode(self.message_id, serializer);
         <String>::sse_encode(self.event_id, serializer);
         <u64>::sse_encode(self.clipboard_sequence, serializer);
+    }
+}
+
+impl SseEncode for crate::api::composer::ComposerSourceDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.display_name, serializer);
+        <String>::sse_encode(self.kind, serializer);
+        <u64>::sse_encode(self.total_size, serializer);
+        <Vec<crate::api::core::SourceItemDto>>::sse_encode(self.sources, serializer);
     }
 }
 

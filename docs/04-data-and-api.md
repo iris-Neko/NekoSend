@@ -1047,6 +1047,8 @@ COMMIT
 
 ## 迁移规则
 
+0.4.0 增加异步输入侧 FFI：`prepare_composer_source(path, kind)` 返回经过清单校验的 `ComposerSourceDto`；`submit_composer_attachment(client_operation_id, conversation_id, source)` 和 `submit_composer_text(client_operation_id, conversation_id, text)` 包装既有幂等发送操作。草稿仅在 Flutter 内存中管理，无新协议类型和数据库迁移。详见 [输入侧说明](09-composer.md)。
+
 - 使用单调 schema version；每个版本一个事务迁移。
 - 迁移前备份数据库文件头信息和当前版本，不复制大型 WAL 到用户目录。
 - 迁移失败必须回滚并停止核心启动，不得部分使用新旧表。

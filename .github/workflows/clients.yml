@@ -44,6 +44,8 @@ jobs:
         run: flutter build windows --release
       - name: Windows taskbar identity regression
         run: ./scripts/test_windows_shell.ps1
+      - name: Windows clipboard regression
+        run: ./scripts/test_windows_composer.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: NekoSend-windows-x64

@@ -14,6 +14,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
+  if (command_line_arguments.size() == 1 && command_line_arguments[0] == "--test-composer-clipboard") {
+    return FlutterWindow::RunClipboardSelfTest();
+  }
   if (FAILED(::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
     return EXIT_FAILURE;
   }

@@ -27,6 +27,8 @@
 #include <optional>
 #include <sstream>
 #include <vector>
+#include <thread>
+#include <wrl/client.h>
 
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
@@ -38,6 +40,7 @@ namespace {
 constexpr UINT kTrayCallbackMessage = WM_APP + 42;
 constexpr UINT kNetworkChangedMessage = WM_APP + 43;
 constexpr UINT kToastActivatedMessage = WM_APP + 44;
+constexpr UINT kClipboardReadComplete = WM_APP + 45;
 constexpr UINT kTrayOpen = 41001;
 constexpr UINT kTraySendClipboard = 41002;
 constexpr UINT kTrayPauseAll = 41003;
@@ -217,6 +220,39 @@ struct ClipboardImageSource {
   bool suppress_sync;
 };
 
+HRESULT EncodeClipboardPng(const std::vector<BYTE>& bitmap, const std::filesystem::path& path) {
+  using Microsoft::WRL::ComPtr;
+  ComPtr<IStream> input;
+  ComPtr<IWICImagingFactory> factory;
+  ComPtr<IWICBitmapDecoder> decoder;
+  ComPtr<IWICBitmapFrameDecode> source;
+  ComPtr<IWICStream> output;
+  ComPtr<IWICBitmapEncoder> encoder;
+  ComPtr<IWICBitmapFrameEncode> frame;
+  HRESULT code = CreateStreamOnHGlobal(nullptr, TRUE, &input);
+  if (SUCCEEDED(code)) code = input->Write(bitmap.data(), static_cast<ULONG>(bitmap.size()), nullptr);
+  if (SUCCEEDED(code)) code = input->Seek({}, STREAM_SEEK_SET, nullptr);
+  if (SUCCEEDED(code)) code = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
+  if (SUCCEEDED(code)) code = factory->CreateDecoderFromStream(input.Get(), nullptr, WICDecodeMetadataCacheOnLoad, &decoder);
+  if (SUCCEEDED(code)) code = decoder->GetFrame(0, &source);
+  UINT width = 0, height = 0;
+  if (SUCCEEDED(code)) code = source->GetSize(&width, &height);
+  if (SUCCEEDED(code) && (width == 0 || height == 0 || static_cast<uint64_t>(width) * height > 32 * 1024 * 1024)) return E_INVALIDARG;
+  if (SUCCEEDED(code)) code = factory->CreateStream(&output);
+  if (SUCCEEDED(code)) code = output->InitializeFromFilename(path.c_str(), GENERIC_WRITE);
+  if (SUCCEEDED(code)) code = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder);
+  if (SUCCEEDED(code)) code = encoder->Initialize(output.Get(), WICBitmapEncoderNoCache);
+  if (SUCCEEDED(code)) code = encoder->CreateNewFrame(&frame, nullptr);
+  if (SUCCEEDED(code)) code = frame->Initialize(nullptr);
+  if (SUCCEEDED(code)) code = frame->SetSize(width, height);
+  WICPixelFormatGUID pixel_format = GUID_WICPixelFormat32bppBGRA;
+  if (SUCCEEDED(code)) code = frame->SetPixelFormat(&pixel_format);
+  if (SUCCEEDED(code)) code = frame->WriteSource(source.Get(), nullptr);
+  if (SUCCEEDED(code)) code = frame->Commit();
+  if (SUCCEEDED(code)) code = encoder->Commit();
+  return code;
+}
+
 std::wstring Utf16FromUtf8(const std::string& value) {
   if (value.empty()) return std::wstring();
   const int length = ::MultiByteToWideChar(
@@ -310,11 +346,11 @@ std::optional<ClipboardImageSource> ReadClipboardImage(HWND owner,
     *result_code = HRESULT_FROM_WIN32(error.value());
     return std::nullopt;
   }
-  const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       std::chrono::system_clock::now().time_since_epoch())
-                       .count();
-  const std::filesystem::path path =
-      directory / (L"clipboard-" + std::to_wstring(now) + L".bmp");
+  GUID identifier{};
+  CoCreateGuid(&identifier);
+  wchar_t identifier_text[40]{};
+  StringFromGUID2(identifier, identifier_text, 40);
+  const std::filesystem::path path = directory / (std::wstring(L"clipboard-") + identifier_text + L".png");
   BITMAPFILEHEADER file_header{};
   file_header.bfType = 0x4D42;
   file_header.bfSize = static_cast<DWORD>(sizeof(file_header) + dib_size);
@@ -323,25 +359,94 @@ std::optional<ClipboardImageSource> ReadClipboardImage(HWND owner,
   std::copy_n(reinterpret_cast<const BYTE*>(&file_header), sizeof(file_header),
               encoded.data());
   std::copy_n(dib, dib_size, encoded.data() + sizeof(file_header));
-  const auto fingerprint = Sha256Hex(encoded);
-  std::ofstream output(path, std::ios::binary);
-  output.write(reinterpret_cast<const char*>(encoded.data()),
-               static_cast<std::streamsize>(encoded.size()));
-  output.flush();
-  const bool saved = output.good();
-  output.close();
   ::GlobalUnlock(handle);
   ::CloseClipboard();
-  if (!saved || !fingerprint.has_value()) {
+  const HRESULT encoded_result = EncodeClipboardPng(encoded, path);
+  const auto png_size = std::filesystem::file_size(path, error);
+  if (FAILED(encoded_result) || error || png_size > kMaxClipboardImageBytes) {
     std::filesystem::remove(path, error);
     *result_code = E_FAIL;
     return std::nullopt;
   }
+  std::ifstream input(path, std::ios::binary);
+  std::vector<BYTE> png(static_cast<size_t>(png_size));
+  input.read(reinterpret_cast<char*>(png.data()), static_cast<std::streamsize>(png.size()));
+  const auto fingerprint = input.good() ? Sha256Hex(png) : std::nullopt;
+  if (!fingerprint) { *result_code = E_FAIL; return std::nullopt; }
+  WIN32_FILE_ATTRIBUTE_DATA attributes{};
+  if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &attributes)) { *result_code = E_FAIL; return std::nullopt; }
+  ULARGE_INTEGER modified{};
+  modified.LowPart = attributes.ftLastWriteTime.dwLowDateTime;
+  modified.HighPart = attributes.ftLastWriteTime.dwHighDateTime;
+  const int64_t modified_at = static_cast<int64_t>(modified.QuadPart / 10000ULL) - 11644473600000LL;
   *result_code = S_OK;
   return ClipboardImageSource{Utf8FromUtf16(path.wstring().c_str()),
-                              static_cast<int64_t>(sizeof(file_header) +
-                                                   dib_size),
-                              now, *fingerprint, suppress_sync};
+                              static_cast<int64_t>(png_size),
+                              modified_at, *fingerprint, suppress_sync};
+}
+
+struct ClipboardReadReply {
+  std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result;
+  flutter::EncodableMap value;
+  std::string error;
+};
+
+void ReadComposerClipboard(HWND owner, ClipboardReadReply* reply) {
+  using flutter::EncodableValue;
+  if (!OpenClipboard(owner)) { reply->error = "剪贴板正被占用，请重试"; return; }
+  const DWORD sequence = GetClipboardSequenceNumber();
+  if (IsClipboardFormatAvailable(CF_HDROP)) {
+    const HDROP drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
+    const UINT count = drop == nullptr ? 0 : DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+    flutter::EncodableList items;
+    size_t bytes = 0;
+    if (count == 0 || count > 10000) reply->error = "剪贴板文件列表无效或过大";
+    for (UINT i = 0; reply->error.empty() && i < count; ++i) {
+      const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+      if (length == 0 || length > 32767) { reply->error = "文件路径无效"; break; }
+      std::vector<wchar_t> path(length + 1);
+      DragQueryFileW(drop, i, path.data(), length + 1);
+      const auto reference = Utf8FromUtf16(path.data());
+      if (reference.empty()) { reply->error = "Invalid Unicode file path"; break; }
+      bytes += reference.size();
+      if (bytes > 16 * 1024 * 1024) { reply->error = "剪贴板文件列表过大"; break; }
+      items.emplace_back(flutter::EncodableMap{
+        {EncodableValue("sourceRef"), EncodableValue(reference)},
+        {EncodableValue("displayName"), EncodableValue(Utf8FromUtf16(std::filesystem::path(path.data()).filename().c_str()))},
+      });
+    }
+    CloseClipboard();
+    reply->value[EncodableValue("items")] = EncodableValue(items);
+    return;
+  }
+  const bool image = IsClipboardFormatAvailable(CF_DIB) || IsClipboardFormatAvailable(CF_DIBV5);
+  if (!image && IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+    const HGLOBAL handle = static_cast<HGLOBAL>(GetClipboardData(CF_UNICODETEXT));
+    const auto* text = handle == nullptr ? nullptr : static_cast<const wchar_t*>(GlobalLock(handle));
+    if (text != nullptr) {
+      const size_t maximum = GlobalSize(handle) / sizeof(wchar_t);
+      const size_t length = wcsnlen_s(text, maximum);
+      if (length > 20000 || length == maximum) reply->error = "剪贴板文字过长或无效";
+      else reply->value[EncodableValue("text")] = EncodableValue(Utf8FromUtf16(text));
+      GlobalUnlock(handle);
+    }
+  }
+  CloseClipboard();
+  if (image) {
+    HRESULT code;
+    const auto source = ReadClipboardImage(owner, &code);
+    if (!source || sequence != GetClipboardSequenceNumber()) {
+      reply->error = "剪贴板图片不可读取或已变化，请重试";
+      return;
+    }
+    reply->value[EncodableValue("items")] = EncodableValue(flutter::EncodableList{EncodableValue(flutter::EncodableMap{
+      {EncodableValue("sourceRef"), EncodableValue(source->path)},
+      {EncodableValue("displayName"), EncodableValue("剪贴板图片.png")},
+      {EncodableValue("kind"), EncodableValue("image")},
+      {EncodableValue("ephemeral"), EncodableValue(true)},
+      {EncodableValue("fingerprint"), EncodableValue(source->fingerprint)},
+    })});
+  }
 }
 
 HRESULT WriteClipboardImage(HWND owner, const std::wstring& path,
@@ -557,6 +662,93 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project,
 
 FlutterWindow::~FlutterWindow() {}
 
+int FlutterWindow::RunClipboardSelfTest() {
+  // A separate station keeps automated tests away from the user's clipboard.
+  const HWINSTA original_station = GetProcessWindowStation();
+  const HDESK original_desktop = GetThreadDesktop(GetCurrentThreadId());
+  HWINSTA station = CreateWindowStationW(nullptr, 0, WINSTA_ALL_ACCESS, nullptr);
+  if (station == nullptr || !SetProcessWindowStation(station)) return 10;
+  HDESK desktop = CreateDesktopW(L"NekoSendClipboardTest", nullptr, nullptr, 0, GENERIC_ALL, nullptr);
+  if (desktop == nullptr || !SetThreadDesktop(desktop)) {
+    SetProcessWindowStation(original_station);
+    if (desktop != nullptr) CloseDesktop(desktop);
+    CloseWindowStation(station);
+    return 11;
+  }
+  CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  HWND owner = CreateWindowW(L"STATIC", L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+  wchar_t temporary[MAX_PATH]{};
+  wchar_t old_app_data[32768]{};
+  GetTempPathW(MAX_PATH, temporary);
+  GetEnvironmentVariableW(L"LOCALAPPDATA", old_app_data, 32768);
+  const auto base = std::filesystem::weakly_canonical(temporary);
+  const auto root = base / (L"NekoSend-clipboard-test-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+  std::error_code file_error;
+  std::filesystem::create_directories(root, file_error);
+  SetEnvironmentVariableW(L"LOCALAPPDATA", root.c_str());
+  auto set = [owner](UINT format, const void* bytes, size_t count, bool clear) {
+    if (!OpenClipboard(owner)) return false;
+    if (clear) EmptyClipboard();
+    const HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, count);
+    void* target = memory == nullptr ? nullptr : GlobalLock(memory);
+    if (target == nullptr) { CloseClipboard(); return false; }
+    memcpy(target, bytes, count);
+    GlobalUnlock(memory);
+    const bool success = SetClipboardData(format, memory) != nullptr;
+    if (!success) GlobalFree(memory);
+    CloseClipboard();
+    return success;
+  };
+  const wchar_t names[] = L"C:\\folder one\\a.txt\0C:\\folder two\\b.png\0\0";
+  std::vector<BYTE> drop(sizeof(DROPFILES) + sizeof(names));
+  auto* header = reinterpret_cast<DROPFILES*>(drop.data());
+  header->pFiles = sizeof(DROPFILES);
+  header->fWide = TRUE;
+  memcpy(drop.data() + sizeof(DROPFILES), names, sizeof(names));
+  bool passed = owner != nullptr && set(CF_HDROP, drop.data(), drop.size(), true);
+  const wchar_t text[] = L"C:\\path-only.txt";
+  passed = passed && set(CF_UNICODETEXT, text, sizeof(text), false);
+  ClipboardReadReply files{nullptr, {}, {}};
+  ReadComposerClipboard(owner, &files);
+  auto found = files.value.find(flutter::EncodableValue("items"));
+  const auto* items = found == files.value.end() ? nullptr : std::get_if<flutter::EncodableList>(&found->second);
+  passed = passed && files.error.empty() && items != nullptr && items->size() == 2 &&
+      files.value.find(flutter::EncodableValue("text")) == files.value.end();
+  passed = passed && set(CF_UNICODETEXT, text, sizeof(text), true);
+  ClipboardReadReply plain{nullptr, {}, {}};
+  ReadComposerClipboard(owner, &plain);
+  passed = passed && plain.error.empty() && plain.value.find(flutter::EncodableValue("text")) != plain.value.end() &&
+      plain.value.find(flutter::EncodableValue("items")) == plain.value.end();
+  std::vector<BYTE> bitmap(sizeof(BITMAPINFOHEADER) + 16, 0);
+  auto* info = reinterpret_cast<BITMAPINFOHEADER*>(bitmap.data());
+  info->biSize = sizeof(BITMAPINFOHEADER); info->biWidth = 2; info->biHeight = 2;
+  info->biPlanes = 1; info->biBitCount = 32; info->biSizeImage = 16;
+  passed = passed && set(CF_DIB, bitmap.data(), bitmap.size(), true);
+  ClipboardReadReply image{nullptr, {}, {}};
+  ReadComposerClipboard(owner, &image);
+  passed = passed && image.error.empty() && image.value.find(flutter::EncodableValue("items")) != image.value.end();
+  bool png_found = false;
+  if (std::filesystem::exists(root / L"LAN Chat" / L"clipboard-sources")) {
+    for (const auto& file : std::filesystem::directory_iterator(root / L"LAN Chat" / L"clipboard-sources")) {
+      std::ifstream input(file.path(), std::ios::binary);
+      std::array<BYTE, 8> signature{};
+      input.read(reinterpret_cast<char*>(signature.data()), 8);
+      png_found = signature == std::array<BYTE, 8>{137, 80, 78, 71, 13, 10, 26, 10};
+    }
+  }
+  passed = passed && png_found;
+  if (OpenClipboard(owner)) { EmptyClipboard(); CloseClipboard(); }
+  DestroyWindow(owner);
+  CoUninitialize();
+  SetEnvironmentVariableW(L"LOCALAPPDATA", old_app_data);
+  SetProcessWindowStation(original_station);
+  SetThreadDesktop(original_desktop);
+  CloseDesktop(desktop);
+  CloseWindowStation(station);
+  if (root.parent_path() == base) std::filesystem::remove_all(root, file_error);
+  return passed ? 0 : 12;
+}
+
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
     return false;
@@ -706,6 +898,17 @@ bool FlutterWindow::OnCreate() {
                           flutter::EncodableValue(
                               static_cast<int64_t>(::GetLastError())));
           }
+          return;
+        }
+        if (call.method_name() == "readClipboardContent") {
+          auto* reply = new ClipboardReadReply{std::move(result), {}, {}};
+          const HWND owner = GetHandle();
+          std::thread([owner, reply]() {
+            const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+            ReadComposerClipboard(owner, reply);
+            if (SUCCEEDED(com)) CoUninitialize();
+            if (!PostMessageW(owner, kClipboardReadComplete, 0, reinterpret_cast<LPARAM>(reply))) delete reply;
+          }).detach();
           return;
         }
         if (call.method_name() == "readClipboardImage") {
@@ -877,6 +1080,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case kClipboardReadComplete: {
+      std::unique_ptr<ClipboardReadReply> reply(reinterpret_cast<ClipboardReadReply*>(lparam));
+      if (reply->error.empty()) reply->result->Success(flutter::EncodableValue(reply->value));
+      else reply->result->Error("CLIPBOARD_READ_FAILED", reply->error);
+      return 0;
+    }
     case kNetworkChangedMessage:
       InvokeDartAction("networkChanged");
       return 0;

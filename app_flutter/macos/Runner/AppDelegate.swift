@@ -127,6 +127,33 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
       if args["showInFolder"] as? Bool == true { NSWorkspace.shared.activateFileViewerSelecting([url]) }
       else if !NSWorkspace.shared.open(url) { throw CocoaError(.fileReadUnknown) }
       result(nil)
+    case "readClipboardContent":
+      let board = NSPasteboard.general
+      if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+        guard urls.count <= 10000 else { throw CocoaError(.fileReadTooLarge) }
+        result(["items": urls.map { ["sourceRef": $0.path, "displayName": $0.lastPathComponent] }])
+      } else if board.availableType(from: [.png, .tiff]) != nil {
+        let sequence = board.changeCount
+        let png = board.data(forType: .png)
+        let tiff = png == nil ? board.data(forType: .tiff) : nil
+        DispatchQueue.global(qos: .userInitiated).async {
+          do {
+            guard var image = try self.cacheClipboardImage(png: png, tiff: tiff, suppressed: false) else {
+              throw CocoaError(.fileReadCorruptFile)
+            }
+            image["kind"] = "image"
+            image["ephemeral"] = true
+            DispatchQueue.main.async {
+              guard board.changeCount == sequence else {
+                result(FlutterError(code: "CLIPBOARD_CHANGED", message: "Clipboard changed; paste again", details: nil)); return
+              }
+              result(["items": [image]])
+            }
+          } catch {
+            DispatchQueue.main.async { result(FlutterError(code: "CLIPBOARD_READ_FAILED", message: error.localizedDescription, details: nil)) }
+          }
+        }
+      } else { result(["text": board.string(forType: .string) ?? ""]) }
     case "readClipboardImage": result(try readClipboardImage())
     case "writeClipboardImage":
       guard let reference = args["reference"] as? String else { throw CocoaError(.fileReadInvalidFileName) }
@@ -190,8 +217,14 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
 
   private func readClipboardImage() throws -> [String: Any]? {
     let pasteboard = NSPasteboard.general
-    var png = pasteboard.data(forType: .png)
-    if png == nil, let tiff = pasteboard.data(forType: .tiff), let bitmap = NSBitmapImageRep(data: tiff) {
+    return try cacheClipboardImage(png: pasteboard.data(forType: .png), tiff: pasteboard.data(forType: .tiff),
+                                  suppressed: suppressedImageCount == pasteboard.changeCount)
+  }
+
+  private func cacheClipboardImage(png original: Data?, tiff: Data?, suppressed: Bool) throws -> [String: Any]? {
+    var png = original
+    if png == nil, let tiff = tiff, let bitmap = NSBitmapImageRep(data: tiff) {
+      guard bitmap.pixelsWide > 0, bitmap.pixelsHigh > 0, bitmap.pixelsWide * bitmap.pixelsHigh <= 32 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
       png = bitmap.representation(using: .png, properties: [:])
     }
     guard let data = png else { return nil }
@@ -200,9 +233,10 @@ class AppDelegate: FlutterAppDelegate, NSWindowDelegate, UNUserNotificationCente
     let name = "clipboard-\(hash).png"
     let url = try directory(.cachesDirectory).appendingPathComponent(name)
     try data.write(to: url, options: .atomic)
+    let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? Date()
     return ["displayName": name, "relativePath": name, "sourceRef": url.path,
-            "size": data.count, "modifiedAtMs": Int(Date().timeIntervalSince1970 * 1000),
-            "fingerprint": hash, "suppressSync": suppressedImageCount == pasteboard.changeCount]
+            "size": data.count, "modifiedAtMs": Int(modified.timeIntervalSince1970 * 1000),
+            "fingerprint": hash, "suppressSync": suppressed]
   }
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,

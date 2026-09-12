@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
 import 'package:lan_chat/src/rust/api/core.dart';
+import 'package:lan_chat/src/rust/api/composer.dart';
 import 'package:lan_chat/src/rust/api/health.dart';
 import 'package:lan_chat/src/rust/events.dart';
 import 'package:lan_chat/src/rust/frb_generated.dart';
@@ -39,9 +40,42 @@ void main() {
     final health = getCoreHealth();
 
     expect(health.status, 'ready');
-    expect(health.coreVersion, '0.3.2');
+    expect(health.coreVersion, '0.4.0');
     expect(health.protocolVersion, 1);
   });
+
+  test(
+    'Composer asynchronously prepares readable files and directories',
+    () async {
+      final folder = await Directory('${tempDirectory.path}/composer-folder')
+          .create();
+      final source = await File('${folder.path}/file with spaces.txt')
+          .writeAsString('attachment payload');
+      await Directory('${folder.path}/empty').create();
+      final file = await prepareComposerSource(path: source.path, kind: 'file');
+      expect(file.totalSize, BigInt.from(18));
+      expect(
+        await File(file.sources.single.sourceRef!).readAsString(),
+        'attachment payload',
+      );
+      final tree = await prepareComposerSource(
+        path: folder.path,
+        kind: 'folder',
+      );
+      expect(
+        tree.sources.where((item) => item.entryKind == 'file'),
+        hasLength(1),
+      );
+      expect(
+        tree.sources.where((item) => item.entryKind == 'directory'),
+        hasLength(2),
+      );
+      await expectLater(
+        prepareComposerSource(path: '${folder.path}/missing', kind: 'file'),
+        throwsA(anything),
+      );
+    },
+  );
 
   test('Flutter starts SQLite core without changing its device id', () {
     final databasePath =
